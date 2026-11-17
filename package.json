@@ -1,0 +1,11 @@
+{
+  "name": "chemist-clash",
+  "version": "0.1.0",
+  "description": "A real-time grid duel where you mix chemical formulas instead of playing cards.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}
