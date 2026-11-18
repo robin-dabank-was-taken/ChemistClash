@@ -42,3 +42,4 @@ export function getPoseSheet(id) {
 }
 
 export const POSE = { idle: 0, cast: 1, hurt: 2, death: 3 };
+
