@@ -11,11 +11,16 @@ function load(map, id, path) {
   map.set(id, img);
 }
 
+// Resolve from this module so GitHub Pages (/ChemistClash/) and localhost both work.
+function characterAsset(id, file, version) {
+  return new URL(`../../assets/characters/${id}/${file}?v=${version}`, import.meta.url).href;
+}
+
 export function preloadPortraits(ids) {
   for (const id of ids) {
-    load(portraits, id, `/assets/characters/${id}/portrait.png?v=natural1`);
-    load(walks, id, `/assets/characters/${id}/walk.png?v=mz1`);
-    load(poses, id, `/assets/characters/${id}/poses.png?v=mz1`);
+    load(portraits, id, characterAsset(id, 'portrait.png', 'natural1'));
+    load(walks, id, characterAsset(id, 'walk.png', 'mz1'));
+    load(poses, id, characterAsset(id, 'poses.png', 'mz1'));
   }
 }
 
