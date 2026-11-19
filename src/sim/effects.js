@@ -1,7 +1,7 @@
 // What each finished reaction actually does. Keyed by recipe id (see data.js).
 import { COLS, ROWS, HALF } from '../data.js';
 import {
-  idx, halfTiles, neighbors, shapeTiles, sideOfCol, emit, damage, heal, shieldUp, knockback,
+  idx, colOf, rowOf, halfTiles, neighbors, shapeTiles, sideOfCol, emit, damage, heal, shieldUp, knockback,
   ignite, douse, chill, acidify, gasify, raiseWall, breakWall, addStrike, addBolt,
 } from './world.js';
 import { modDamage, modHeal, modShield, modDuration } from './traits.js';
@@ -231,6 +231,35 @@ export const EFFECTS = {
   nh3(game, p) {
     cleanse(p);
     status(game, p, 'haste', 5);
+  },
+
+  // Alkali splash at the mirror tile, then Chebyshev rings expand over the enemy half.
+  // Each ring telegraphs and resolves on its own delay so the foe can step off it.
+  nh4oh(game, p) {
+    const mc = mirrorCol(p);
+    const mr = p.row;
+    const side = foeSide(p);
+    const dmg = modDamage(p, 'base', 12);
+    const rings = new Map();
+    for (const i of halfTiles(side)) {
+      const d = Math.max(Math.abs(colOf(i) - mc), Math.abs(rowOf(i) - mr));
+      if (!rings.has(d)) rings.set(d, []);
+      rings.get(d).push(i);
+    }
+    const windup = 0.4;
+    const gap = 0.3;
+    for (const d of [...rings.keys()].sort((a, b) => a - b)) {
+      const tiles = rings.get(d);
+      addStrike(game, {
+        owner: p.id,
+        kind: 'base',
+        tiles,
+        delay: windup + d * gap,
+        onTile: (_i, victim) => {
+          if (victim) damage(game, victim, dmg, 'base');
+        },
+      });
+    }
   },
 
   h2o2(game, p) {

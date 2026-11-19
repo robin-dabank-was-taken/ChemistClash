@@ -125,11 +125,15 @@ export function drawPanel(ctx, p, keys, view, time) {
     const legend = keys.potA
       ? [[keys.potA, 'pot A'], [keys.potB, 'pot B'], [keys.run, 'confirm'], [keys.clear, 'empty']]
       : [[keys.toggle, 'switch'], [keys.run, 'confirm'], [keys.clear, 'empty']];
+    if (keys.skill) legend.push([keys.skill, 'skill']);
     legend.forEach(([cap, label], n) => {
-      keycap(ctx, cap, lx, y + 152 + n * 20, 24, 16);
-      text(ctx, label, lx + 30, y + 160 + n * 20, { size: 10, color: INK, baseline: 'middle' });
+      keycap(ctx, cap, lx, y + 148 + n * 18, 24, 15);
+      text(ctx, label, lx + 30, y + 155 + n * 18, { size: 10, color: INK, baseline: 'middle' });
     });
-    text(ctx, `${keys.move} move`, lx + 110, y + 160, { size: 10, color: DIM, baseline: 'middle' });
+    const skillCd = p.skillCd || 0;
+    text(ctx, skillCd > 0 ? `skill ${skillCd.toFixed(1)}s` : `${keys.move} move`, lx + 110, y + 160, {
+      size: 10, color: skillCd > 0 ? '#ffb23c' : DIM, baseline: 'middle',
+    });
   } else {
     text(ctx, 'COMPUTER', lx, y + 176, { size: 12, color });
     text(ctx, 'Watch its pots', lx, y + 194, { size: 10, color: DIM, weight: 400 });

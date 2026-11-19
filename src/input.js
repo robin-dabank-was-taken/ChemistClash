@@ -9,25 +9,28 @@ export const KEYS_SOLO = {
   up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
   slots: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'],
   potA: ['KeyQ'], potB: ['KeyW'], run: ['KeyE'], clear: ['KeyR'],
+  skill: ['KeyS'],
   labels: {
-    slots: ['1', '2', '3', '4', '5'], potA: 'Q', potB: 'W', run: 'E', clear: 'R', move: 'ARROWS',
-    toggle: 'Q/W', // legend fallback
+    slots: ['1', '2', '3', '4', '5'], potA: 'Q', potB: 'W', run: 'E', clear: 'R', skill: 'S', move: 'ARROWS',
+    toggle: 'Q/W',
   },
 };
 
-// Local P1 (WASD) — kept for two-player on one keyboard.
+// Local P1 (WASD) — skill on C because S is move-down.
 export const KEYS_P1 = {
   up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'],
   slots: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'],
   toggle: ['KeyQ'], run: ['KeyE'], clear: ['KeyX'],
-  labels: { slots: ['1', '2', '3', '4', '5'], toggle: 'Q', run: 'E', clear: 'X', move: 'WASD' },
+  skill: ['KeyC'],
+  labels: { slots: ['1', '2', '3', '4', '5'], toggle: 'Q', run: 'E', clear: 'X', skill: 'C', move: 'WASD' },
 };
 
 export const KEYS_P2 = {
   up: ['KeyI', 'ArrowUp'], down: ['KeyK', 'ArrowDown'], left: ['KeyJ', 'ArrowLeft'], right: ['KeyL', 'ArrowRight'],
   slots: ['Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'],
   toggle: ['KeyU'], run: ['KeyO'], clear: ['Comma'],
-  labels: { slots: ['6', '7', '8', '9', '0'], toggle: 'U', run: 'O', clear: ',', move: 'IJKL' },
+  skill: ['Period'],
+  labels: { slots: ['6', '7', '8', '9', '0'], toggle: 'U', run: 'O', clear: ',', skill: '.', move: 'IJKL' },
 };
 
 const BUFFER = 0.16;
@@ -56,6 +59,7 @@ export class Input {
       if (keys.potA) bind(keys.potA, pid, { type: 'selectPot', pot: 0 });
       if (keys.potB) bind(keys.potB, pid, { type: 'selectPot', pot: 1 });
       if (keys.toggle) bind(keys.toggle, pid, { type: 'toggle' });
+      if (keys.skill) bind(keys.skill, pid, { type: 'skill' });
       bind(keys.run, pid, { type: 'run' });
       bind(keys.clear, pid, { type: 'clear' });
     }

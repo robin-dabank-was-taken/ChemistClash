@@ -18,7 +18,7 @@ export const FAMILIES = {
 // on the character traits, not here.
 export const FAMILY_OF = {
   hcl: 'acid', so2: 'acid', hno3: 'acid', h2so4: 'acid', h3po4: 'acid',
-  nh3: 'base', n2: 'base',
+  nh3: 'base', n2: 'base', nh4oh: 'base',
   hcn: 'toxin', chcl3: 'toxin', co: 'toxin', cl2: 'toxin', h2s: 'toxin', n2o: 'toxin', c6h6: 'toxin',
   o2: 'oxidizer', o3: 'oxidizer', h2o2: 'oxidizer', p4: 'oxidizer', n2h4: 'oxidizer',
   h2: 'organic', c2h2: 'organic', ph3: 'organic', c3h8: 'organic', c8h18: 'organic',

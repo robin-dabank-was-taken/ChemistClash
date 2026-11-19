@@ -416,7 +416,8 @@ function keyRow(ctx, x, y, caps, label) {
 const TRUMP = RECIPES.find((r) => r.id === TRUMP_ID);
 const RULES = [
   'Pick a chemist before each match. Each one buffs one chemistry family (acids, bases, toxins, …) and weakens another. Oleanolic acid is its own NUKE type.',
-  'Versus the computer or online: arrows move, 1–5 throw atoms, Q and W select pot A or B, E confirms the reaction, R empties the active pot.',
+  'Versus the computer or online: arrows move, 1–5 throw atoms, Q and W select pot A or B, E confirms, R empties, S uses your chemist skill (5s cooldown). Local P1 uses C for skill.',
+  'Each chemist has a unique basic skill that deals 2 damage plus a rider (acid puddle, alkali ripple, toxin mist, ignite clouds, front wall, or next heal ×2).',
   'Online: host a room, share the 4-character code, both pick chemists — the server runs the match so both sides stay in sync.',
   'Your hotbar always holds 5 atoms. The moment you throw one, a new one takes its place. Hydrogen and carbon turn up most.',
   'Throw atoms into the active pot to build a formula, then confirm to react. Pots hold as many atoms as you like.',
@@ -438,6 +439,7 @@ export function drawHowTo(ctx) {
         [['W'], 'Select pot B'],
         [['E'], 'Confirm reaction'],
         [['R'], 'Empty the active pot'],
+        [['S'], 'Chemist skill (5s cooldown)'],
       ],
     },
     {
@@ -448,12 +450,13 @@ export function drawHowTo(ctx) {
         [['U'], 'Switch pot'],
         [['O'], 'Confirm reaction'],
         [[','], 'Empty the active pot'],
+        [['.'], 'Chemist skill (5s cooldown)'],
       ],
-      note: 'P1 on the same keyboard still uses WASD, Q toggle, E, X.',
+      note: 'P1: WASD, Q toggle, E, X, C skill.',
     },
   ];
   for (const c of cards) {
-    rr(ctx, c.x, 72, 550, 220, 14);
+    rr(ctx, c.x, 72, 550, 248, 14);
     ctx.fillStyle = 'rgba(13,20,36,0.94)';
     ctx.fill();
     ctx.strokeStyle = alpha(c.color, 0.5);
@@ -461,9 +464,9 @@ export function drawHowTo(ctx) {
     ctx.stroke();
     text(ctx, c.title, c.x + 22, 100, { size: 16, color: c.color });
     c.rows.forEach((row, i) => keyRow(ctx, c.x + 22, 112 + i * 28, row[0], row[1]));
-    if (c.note) text(ctx, c.note, c.x + 22, 280, { size: 11, color: DIM, weight: 400 });
+    if (c.note) text(ctx, c.note, c.x + 22, 300, { size: 11, color: DIM, weight: 400 });
   }
-  let y = 328;
+  let y = 348;
   for (const rule of RULES) {
     circle(ctx, 84, y - 5, 3.5);
     ctx.fillStyle = PLAYER_COLORS[0];

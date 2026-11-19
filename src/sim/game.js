@@ -9,6 +9,7 @@ import { attachCharacter } from './traits.js';
 import {
   TUNE, idx, inField, sideOfCol, emit, damage, reactionRate, explode, stepBolt,
 } from './world.js';
+import { castSkill } from './skills.js';
 
 const HOTBAR_SIZE = 5;
 const MAX_EVENTS = 4000;
@@ -33,6 +34,7 @@ function makePlayer(game, id, name, characterId) {
     pots: [0, 1].map(() => ({ atoms: [], state: 'idle', recipe: null, t: 0, total: 0 })),
     activePot: 0,
     shield: 0, shieldT: 0, haste: 0, giddy: 0, chill: 0, frozen: 0, stun: 0,
+    skillCd: 0, healAmp: 0,
   };
   attachCharacter(p, characterId || DEFAULT_CHARACTER_ID);
   for (let i = 0; i < HOTBAR_SIZE; i++) p.hotbar.push({ el: drawAtom(game, p) });
@@ -141,7 +143,7 @@ function runPot(game, p) {
   return true;
 }
 
-// action: move | slot | toggle | selectPot | run | clear
+// action: move | slot | toggle | selectPot | run | clear | skill
 export function act(game, pid, action) {
   if (game.phase !== 'playing') return false;
   const p = game.players[pid];
@@ -170,6 +172,8 @@ export function act(game, pid, action) {
       return runPot(game, p);
     case 'clear':
       return clearPot(game, p);
+    case 'skill':
+      return castSkill(game, p);
     default:
       return false;
   }
@@ -183,6 +187,7 @@ function stepPlayer(game, p, dt) {
   p.moveCd = tick(p.moveCd, dt);
   p.hurtT = tick(p.hurtT, dt);
   p.hazardCd = tick(p.hazardCd, dt);
+  p.skillCd = tick(p.skillCd || 0, dt);
   p.haste = tick(p.haste, dt);
   p.giddy = tick(p.giddy, dt);
   p.chill = tick(p.chill, dt);

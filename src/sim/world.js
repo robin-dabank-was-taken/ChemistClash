@@ -90,8 +90,13 @@ export function shieldUp(game, p, amount, dur) {
 }
 
 export function heal(game, p, amount) {
+  let amt = amount;
+  if (p.healAmp && p.healAmp > 1) {
+    amt = Math.round(amount * p.healAmp);
+    p.healAmp = 0;
+  }
   const before = p.hp;
-  p.hp = Math.min(TUNE.maxHp, p.hp + amount);
+  p.hp = Math.min(TUNE.maxHp, p.hp + amt);
   emit(game, 'heal', { pid: p.id, amount: p.hp - before });
 }
 

@@ -25,6 +25,8 @@ export const GASES = {
   h2s: { name: 'Hydrogen sulfide', color: '#d8c64a', alpha: 0.42, dmg: 3, flammable: true, boom: 12 },
   ch4: { name: 'Methane', color: '#8fd0ff', alpha: 0.36, dmg: 0, flammable: true, boom: 22 },
   n2o: { name: 'Nitrous oxide', color: '#f09be8', alpha: 0.42, dmg: 0, giddy: 2.5 },
+  // Kuro's basic-skill linger cloud (1 dmg per hazard tick).
+  miasma: { name: 'Toxin mist', color: '#b07dff', alpha: 0.4, dmg: 1 },
 };
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉';
@@ -164,6 +166,8 @@ export const RECIPES = [
     'Smothers every fire and sweeps every gas cloud off your side.'),
   recipe('nh3', 'NH3', 'Ammonia', 'Smelling Salts', 1.0, 'self', 'support',
     'Clears giddy, chill, freeze and knockout. Haste for 5 s: quicker steps, faster reactions.'),
+  recipe('nh4oh', 'NH4OH', 'Ammonium hydroxide', 'Alkali Ripple', 1.2, 'mirror', 'attack',
+    'Lands on the tile 4 ahead, then a dodgeable alkali ring ripples out across the whole enemy half. 12 dmg per ring.'),
 
   // ---- OA nuke (own type — not an attack / organic)
   recipe(TRUMP_ID, 'C30H48O3', 'Oleanolic acid', 'OA Nuke', 5.0, 'field', 'nuke',

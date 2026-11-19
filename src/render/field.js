@@ -12,11 +12,13 @@ const SIDE_TILE = [
 ];
 const STRIKE_COLOR = {
   water: '#5db8ff', frost: '#c9eeff', acid: '#9be33c', fire: '#ff8a3c', cyanide: '#c77dff', blast: '#ffd24a',
-  knockout: '#d9c2ff', solvent: '#ff9ecf', trump: '#fff0a8', wall: '#c4b49a',
+  knockout: '#d9c2ff', solvent: '#ff9ecf', trump: '#fff0a8', wall: '#c4b49a', base: '#86a8ff',
 };
-const BOLT_COLOR = { acid: '#a9f04a', rocket: '#ffb23c' };
-const DAMAGE_COLOR = { burn: '#ff9d4a', acid: '#b6f25a', gas: '#d6e86a', frost: '#bfe9ff', water: '#7cc6ff', poison: '#d49bff', blast: '#ffd24a' };
-const STATUS_TEXT = { haste: 'HASTE', frozen: 'FROZEN!', chill: 'CHILLED', shield: 'SHIELD', stun: 'KNOCKED OUT!' };
+const BOLT_COLOR = { acid: '#a9f04a', rocket: '#ffb23c', spark: '#e9f6ff' };
+const DAMAGE_COLOR = { burn: '#ff9d4a', acid: '#b6f25a', gas: '#d6e86a', frost: '#bfe9ff', water: '#7cc6ff', poison: '#d49bff', blast: '#ffd24a', base: '#86a8ff' };
+const STATUS_TEXT = {
+  haste: 'HASTE', frozen: 'FROZEN!', chill: 'CHILLED', shield: 'SHIELD', stun: 'KNOCKED OUT!', healamp: 'HEAL ×2',
+};
 
 const FEET = 16; // how far below the tile centre a chemist's feet sit
 
@@ -197,11 +199,14 @@ export class FieldView {
       } else if (ev.kind === 'trump') {
         const c = this.tileBurst(i, color, 10, 340, { size: 6, life: 0.8 });
         this.ring(c.x, c.y, '#ffffff', 90, 0.5);
+      } else if (ev.kind === 'base') {
+        const c = this.tileBurst(i, color, 6, 140, { up: 50, size: 5 });
+        this.ring(c.x, c.y, color, 42, 0.28);
       } else if (ev.kind !== 'blast') this.tileBurst(i, color, 7, 160, { up: 80 });
     }
     if (ev.kind === 'trump') this.shake = 22;
     const sound = {
-      gas: 'gas', water: 'splash', frost: 'freeze', acid: 'splash', fire: 'burn', cyanide: 'hit', knockout: 'hit', solvent: 'hit', trump: 'boom', wall: 'shield',
+      gas: 'gas', water: 'splash', frost: 'freeze', acid: 'splash', fire: 'burn', cyanide: 'hit', knockout: 'hit', solvent: 'hit', trump: 'boom', wall: 'shield', base: 'splash',
     }[ev.kind];
     if (sound) sfx.play(sound);
   }
