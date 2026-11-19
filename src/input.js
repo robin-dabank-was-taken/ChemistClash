@@ -1,20 +1,17 @@
 // Keyboard -> game actions. Bindings use physical key positions (event.code),
 // so they sit in the same place on any keyboard layout.
 import { act } from './sim/game.js';
+import { buildSoloKeys } from './controls.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
-// Solo vs bot: OSFE-leaning layout — arrows, Q/W pots, E confirm, R discard.
-export const KEYS_SOLO = {
-  up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
-  slots: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'],
-  potA: ['KeyQ'], potB: ['KeyW'], run: ['KeyE'], clear: ['KeyR'],
-  skill: ['KeyS'],
-  labels: {
-    slots: ['1', '2', '3', '4', '5'], potA: 'Q', potB: 'W', run: 'E', clear: 'R', skill: 'S', move: 'ARROWS',
-    toggle: 'Q/W',
-  },
-};
+/** Fresh solo/online keys from current (possibly rebound) bindings. */
+export function getSoloKeys() {
+  return buildSoloKeys();
+}
+
+// Kept for reference / tests; prefer getSoloKeys() at match start.
+export const KEYS_SOLO = buildSoloKeys();
 
 // Local P1 (WASD) — skill on C because S is move-down.
 export const KEYS_P1 = {
@@ -22,7 +19,12 @@ export const KEYS_P1 = {
   slots: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'],
   toggle: ['KeyQ'], run: ['KeyE'], clear: ['KeyX'],
   skill: ['KeyC'],
-  labels: { slots: ['1', '2', '3', '4', '5'], toggle: 'Q', run: 'E', clear: 'X', skill: 'C', move: 'WASD' },
+  shuffle: ['KeyF'],
+  bolt: ['KeyV'],
+  labels: {
+    slots: ['1', '2', '3', '4', '5'], toggle: 'Q', run: 'E', clear: 'X',
+    skill: 'C', shuffle: 'F', bolt: 'V', move: 'WASD',
+  },
 };
 
 export const KEYS_P2 = {
@@ -30,24 +32,26 @@ export const KEYS_P2 = {
   slots: ['Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'],
   toggle: ['KeyU'], run: ['KeyO'], clear: ['Comma'],
   skill: ['Period'],
-  labels: { slots: ['6', '7', '8', '9', '0'], toggle: 'U', run: 'O', clear: ',', skill: '.', move: 'IJKL' },
+  shuffle: ['KeyM'],
+  bolt: ['Slash'],
+  labels: {
+    slots: ['6', '7', '8', '9', '0'], toggle: 'U', run: 'O', clear: ',',
+    skill: '.', shuffle: 'M', bolt: '/', move: 'IJKL',
+  },
 };
 
 const BUFFER = 0.16;
-// Longer pause before the first hold-repeat so a normal tap is exactly one tile.
 const REPEAT_INITIAL = 0.38;
 const REPEAT_DELAY = 0.16;
-// Client-side gate for online so two packets can't land as two steps.
 const ONLINE_MOVE_CD = 0.15;
 
 export class Input {
   constructor() {
     this.bindings = new Map();
-    this.dispatch = null; // optional (pid, action) => {} for online play
+    this.dispatch = null;
     this.reset();
   }
 
-  // humans: array of { pid, keys }.
   configure(humans) {
     this.bindings.clear();
     const bind = (codes, pid, action) => {
@@ -60,6 +64,8 @@ export class Input {
       if (keys.potB) bind(keys.potB, pid, { type: 'selectPot', pot: 1 });
       if (keys.toggle) bind(keys.toggle, pid, { type: 'toggle' });
       if (keys.skill) bind(keys.skill, pid, { type: 'skill' });
+      if (keys.shuffle) bind(keys.shuffle, pid, { type: 'shuffle' });
+      if (keys.bolt) bind(keys.bolt, pid, { type: 'bolt' });
       bind(keys.run, pid, { type: 'run' });
       bind(keys.clear, pid, { type: 'clear' });
     }
@@ -79,7 +85,6 @@ export class Input {
     if (repeat) return true;
     if (b.action.type === 'move') {
       this.held[b.pid].delete(code);
-      // t counts up; first repeat after REPEAT_INITIAL, then every REPEAT_DELAY.
       this.held[b.pid].set(code, { action: b.action, t: 0, repeated: false });
       this.pending[b.pid] = { action: b.action, ttl: BUFFER };
     } else {
@@ -122,7 +127,6 @@ export class Input {
         const ok = apply(pid, pending.action);
         if (ok || pending.ttl <= 0) {
           this.pending[pid] = null;
-          // Restart hold clock from the successful first step (or give-up).
           for (const h of this.held[pid].values()) {
             h.t = 0;
             h.repeated = false;
@@ -140,7 +144,6 @@ export class Input {
           latest.t = 0;
           latest.repeated = true;
         } else {
-          // Blocked (wall / cd): keep trying without accelerating into a double.
           latest.t = need;
         }
       }

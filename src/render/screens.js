@@ -2,6 +2,7 @@
 // overlays shown during a match (countdown, pause, result).
 import { ELEMENTS, ELEMENT_ORDER, RECIPES, TRUMP_ID } from '../data.js';
 import { CHARACTERS } from '../characters.js';
+import { SOLO_BIND_ROWS, codeLabel } from '../controls.js';
 import { drawPortrait } from './chemist.js';
 import { W, H, FIELD_Y, FIELD_BOTTOM, PLAYER_COLORS } from './layout.js';
 import { rr, circle, hash, alpha, text, font, wrap, formula, keycap } from './draw.js';
@@ -354,12 +355,13 @@ function titleTiles(ctx, word, y, time, offset) {
   });
 }
 
-export const MENU = ['bot', 'local', 'online', 'book', 'howto'];
+export const MENU = ['bot', 'local', 'online', 'book', 'controls', 'howto'];
 const MENU_LABEL = {
   bot: 'PLAY VS COMPUTER',
   local: '2 PLAYERS, ONE KEYBOARD',
   online: 'ONLINE · ROOM CODE',
   book: 'RECIPE BOOK',
+  controls: 'CONTROLS · REBIND',
   howto: 'HOW TO PLAY',
 };
 
@@ -381,9 +383,9 @@ export function drawMenu(ctx, menu, levels, time) {
   const rects = [];
   MENU.forEach((id, k) => {
     const w = 470;
-    const h = 44;
+    const h = 40;
     const x = (W - w) / 2;
-    const y = 300 + k * 52;
+    const y = 292 + k * 46;
     const on = menu.index === k;
     rr(ctx, x, y, w, h, 12);
     ctx.fillStyle = on ? alpha(PLAYER_COLORS[0], 0.2) : 'rgba(255,255,255,0.04)';
@@ -426,6 +428,40 @@ const RULES = [
   `The OA Nuke is ${TRUMP.chem} (${TRUMP.label}). It hits the whole enemy side, needs ${TRUMP.atoms} atoms, and is not buffed by organic or attack traits.`,
 ];
 
+export function drawControls(ctx, controls) {
+  shade(ctx, 0.55);
+  text(ctx, 'CONTROLS', W / 2, 42, { size: 28, color: '#ffffff', align: 'center' });
+  text(ctx, 'Solo & online room-code bindings  ·  Enter to rebind  ·  R reset  ·  Esc back', W / 2, 72, {
+    size: 12, color: DIM, align: 'center', weight: 400,
+  });
+  const binds = controls.binds;
+  const cols = 2;
+  const perCol = Math.ceil(SOLO_BIND_ROWS.length / cols);
+  controls.rects = [];
+  for (let i = 0; i < SOLO_BIND_ROWS.length; i++) {
+    const row = SOLO_BIND_ROWS[i];
+    const col = Math.floor(i / perCol);
+    const ri = i % perCol;
+    const x = 80 + col * 560;
+    const y = 100 + ri * 34;
+    const on = controls.index === i;
+    const listening = controls.listening === row.id;
+    rr(ctx, x, y, 520, 30, 8);
+    ctx.fillStyle = listening ? alpha('#ffb23c', 0.2) : on ? alpha(PLAYER_COLORS[0], 0.18) : 'rgba(255,255,255,0.03)';
+    ctx.fill();
+    ctx.strokeStyle = listening ? '#ffb23c' : on ? PLAYER_COLORS[0] : '#2a3650';
+    ctx.lineWidth = on || listening ? 2 : 1;
+    ctx.stroke();
+    text(ctx, row.label, x + 14, y + 16, { size: 14, color: INK, baseline: 'middle', weight: 400 });
+    const cap = listening ? '…' : codeLabel(binds[row.id]);
+    keycap(ctx, cap, x + 420, y + 4, Math.max(36, cap.length * 10 + 16), 22, { lit: listening || on });
+    controls.rects.push({ i, id: row.id, x, y, w: 520, h: 30 });
+  }
+  if (controls.flash) {
+    text(ctx, controls.flash, W / 2, H - 36, { size: 13, color: '#7dffa0', align: 'center', weight: 400 });
+  }
+}
+
 export function drawHowTo(ctx) {
   shade(ctx, 0.55);
   text(ctx, 'HOW TO PLAY', W / 2, 52, { size: 30, color: '#ffffff', align: 'center' });
@@ -440,6 +476,8 @@ export function drawHowTo(ctx) {
         [['E'], 'Confirm reaction'],
         [['R'], 'Empty the active pot'],
         [['S'], 'Chemist skill (5s cooldown)'],
+        [['D'], 'Fire bolt (2 dmg)'],
+        [['F'], 'Shuffle hotbar'],
       ],
     },
     {

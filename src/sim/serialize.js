@@ -43,6 +43,7 @@ function snapPlayer(p) {
     stun: p.stun,
     skillCd: p.skillCd || 0,
     healAmp: p.healAmp || 0,
+    boltCd: p.boltCd || 0,
     characterId: p.characterId,
   };
 }
@@ -127,6 +128,7 @@ export function hydrateGame(snap, into = null) {
       stun: sp.stun,
       skillCd: sp.skillCd || 0,
       healAmp: sp.healAmp || 0,
+      boltCd: sp.boltCd || 0,
     };
     attachCharacter(p, sp.characterId);
     return p;

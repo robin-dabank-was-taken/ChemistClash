@@ -1,7 +1,10 @@
 // Entry point: owns the canvas, the main loop, and which screen is showing.
 import { createGame, step } from './sim/game.js';
 import { createBot, botStep, BOT_LEVELS } from './sim/bot.js';
-import { Input, KEYS_SOLO, KEYS_P1, KEYS_P2 } from './input.js';
+import { Input, getSoloKeys, KEYS_P1, KEYS_P2 } from './input.js';
+import {
+  SOLO_BIND_ROWS, getSoloBinds, rebindSolo, resetSoloBinds, loadSoloBinds,
+} from './controls.js';
 import { CHARACTERS, pickBotCharacter, getCharacter } from './characters.js';
 import { Sfx } from './audio.js';
 import { W, H } from './render/layout.js';
@@ -12,6 +15,7 @@ import { preloadPortraits } from './render/sprites.js';
 import {
   MENU, BOOK_PAGES, drawBackdrop, drawMenu, drawHowTo, drawBook, drawSelect,
   drawCountdown, drawPause, drawResult, drawOnlineGate, drawOnlineJoin, drawOnlineLobby,
+  drawControls,
 } from './render/screens.js';
 import {
   NetClient, makeRoomCode, applyNetFrame, isValidCode, normalizeCode,
@@ -31,7 +35,7 @@ const net = new NetClient();
 preloadPortraits(CHARACTERS.map((c) => c.id));
 
 export const app = {
-  screen: 'menu', // menu | howto | select | online | join | lobby | game
+  screen: 'menu', // menu | howto | select | online | join | lobby | controls | game
   menu: { index: 0, level: 0 },
   menuRects: [],
   book: false,
@@ -40,6 +44,7 @@ export const app = {
   select: null,
   picks: [null, null],
   online: null, // { step, index, role, code, seats, error, status, rects }
+  controls: null, // { index, listening, binds, rects, flash }
   game: null,
   bot: null,
   humans: [],
@@ -48,6 +53,8 @@ export const app = {
   time: 0,
   scale: 1,
 };
+
+loadSoloBinds();
 
 function resize() {
   const fit = Math.min(window.innerWidth / W, window.innerHeight / H);
@@ -141,7 +148,7 @@ function beginOnlineMatch(msg) {
   app.game = null;
   applyNetFrame(app, msg, view, sfx);
   app.bot = null;
-  app.humans = [{ pid: net.pid, keys: KEYS_SOLO }];
+  app.humans = [{ pid: net.pid, keys: getSoloKeys() }];
   input.configure(app.humans);
   input.dispatch = (_pid, action) => net.act(action);
   view.reset();
@@ -245,7 +252,7 @@ function startMatch(mode, characters) {
   });
   app.bot = mode === 'bot' ? createBot(1, level) : null;
   app.humans = mode === 'bot'
-    ? [{ pid: 0, keys: KEYS_SOLO }]
+    ? [{ pid: 0, keys: getSoloKeys() }]
     : [{ pid: 0, keys: KEYS_P1 }, { pid: 1, keys: KEYS_P2 }];
   input.dispatch = null;
   input.configure(app.humans);
@@ -286,7 +293,16 @@ function chooseMenu(id) {
     };
     app.screen = 'online';
   } else if (id === 'book') app.book = true;
-  else app.screen = 'howto';
+  else if (id === 'controls') {
+    app.controls = {
+      index: 0,
+      listening: null,
+      binds: getSoloBinds(),
+      rects: [],
+      flash: null,
+    };
+    app.screen = 'controls';
+  } else app.screen = 'howto';
 }
 
 const CONFIRM = ['Enter', 'NumpadEnter', 'Space'];
@@ -330,6 +346,51 @@ function onKey(code, repeat) {
 
   if (app.screen === 'howto') {
     if (!repeat && (code === 'Escape' || code === 'Backspace' || CONFIRM.includes(code))) app.screen = 'menu';
+    return true;
+  }
+
+  if (app.screen === 'controls') {
+    const c = app.controls;
+    if (!c) return true;
+    if (c.listening) {
+      if (repeat) return true;
+      if (code === 'Escape') {
+        c.listening = null;
+        c.flash = 'Cancelled';
+        return true;
+      }
+      const row = SOLO_BIND_ROWS[c.index];
+      if (row && rebindSolo(row.id, code)) {
+        c.binds = getSoloBinds();
+        c.listening = null;
+        c.flash = `Bound ${row.label}`;
+        sfx.play('select');
+      }
+      return true;
+    }
+    if (repeat) return true;
+    if (code === 'Escape' || code === 'Backspace') {
+      app.controls = null;
+      app.screen = 'menu';
+      return true;
+    }
+    if (code === 'KeyR') {
+      c.binds = resetSoloBinds();
+      c.flash = 'Defaults restored';
+      sfx.play('select');
+      return true;
+    }
+    if (code === 'KeyW' || code === 'ArrowUp') {
+      c.index = (c.index + SOLO_BIND_ROWS.length - 1) % SOLO_BIND_ROWS.length;
+      sfx.play('menu');
+    } else if (code === 'KeyS' || code === 'ArrowDown') {
+      c.index = (c.index + 1) % SOLO_BIND_ROWS.length;
+      sfx.play('menu');
+    } else if (CONFIRM.includes(code) || code === 'KeyE') {
+      c.listening = SOLO_BIND_ROWS[c.index].id;
+      c.flash = 'Press any key…';
+      sfx.play('menu');
+    }
     return true;
   }
 
@@ -502,7 +563,20 @@ canvas.addEventListener('click', (e) => {
     app.bookPage = (app.bookPage + 1) % BOOK_PAGES;
     if (app.bookPage === 0) app.book = false;
   } else if (app.screen === 'howto') app.screen = 'menu';
-  else if (app.screen === 'menu') {
+  else if (app.screen === 'controls') {
+    if (!app.controls) return;
+    if (app.controls.listening) return;
+    const box = canvas.getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * W;
+    const y = ((e.clientY - box.top) / box.height) * H;
+    const hit = (app.controls.rects || []).find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+    if (hit) {
+      app.controls.index = hit.i;
+      app.controls.listening = hit.id;
+      app.controls.flash = 'Press any key…';
+      sfx.play('menu');
+    }
+  } else if (app.screen === 'menu') {
     const item = menuItemAt(e);
     if (item) chooseMenu(item.id);
   } else if (app.screen === 'online') {
@@ -531,6 +605,8 @@ function render() {
     app.menuRects = drawMenu(ctx, app.menu, BOT_LEVELS, app.time);
   } else if (app.screen === 'howto') {
     drawHowTo(ctx);
+  } else if (app.screen === 'controls') {
+    drawControls(ctx, app.controls);
   } else if (app.screen === 'online') {
     drawOnlineGate(ctx, app.online);
   } else if (app.screen === 'join') {

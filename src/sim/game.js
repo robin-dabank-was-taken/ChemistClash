@@ -7,7 +7,7 @@ import { makeRng } from './rng.js';
 import { EFFECTS } from './effects.js';
 import { attachCharacter } from './traits.js';
 import {
-  TUNE, idx, inField, sideOfCol, emit, damage, reactionRate, explode, stepBolt,
+  TUNE, idx, inField, sideOfCol, emit, damage, reactionRate, explode, stepBolt, addBolt,
 } from './world.js';
 import { castSkill } from './skills.js';
 
@@ -34,7 +34,7 @@ function makePlayer(game, id, name, characterId) {
     pots: [0, 1].map(() => ({ atoms: [], state: 'idle', recipe: null, t: 0, total: 0 })),
     activePot: 0,
     shield: 0, shieldT: 0, haste: 0, giddy: 0, chill: 0, frozen: 0, stun: 0,
-    skillCd: 0, healAmp: 0,
+    skillCd: 0, healAmp: 0, boltCd: 0,
   };
   attachCharacter(p, characterId || DEFAULT_CHARACTER_ID);
   for (let i = 0; i < HOTBAR_SIZE; i++) p.hotbar.push({ el: drawAtom(game, p) });
@@ -175,9 +175,32 @@ export function act(game, pid, action) {
       return clearPot(game, p);
     case 'skill':
       return castSkill(game, p);
+    case 'shuffle':
+      return shuffleHotbar(game, p);
+    case 'bolt':
+      return fireBolt(game, p);
     default:
       return false;
   }
+}
+
+function shuffleHotbar(game, p) {
+  const els = p.hotbar.map((s) => s.el);
+  game.rng.shuffle(els);
+  els.forEach((el, i) => { p.hotbar[i].el = el; });
+  emit(game, 'shuffle', { pid: p.id });
+  return true;
+}
+
+function fireBolt(game, p) {
+  if ((p.boltCd || 0) > 0) {
+    emit(game, 'deny', { pid: p.id });
+    return false;
+  }
+  addBolt(game, p, { kind: 'spark', dmg: 2, speed: 18 });
+  p.boltCd = 0.45;
+  emit(game, 'skill', { pid: p.id, skill: 'bolt' });
+  return true;
 }
 
 // ---------------------------------------------------------------- time
@@ -189,6 +212,7 @@ function stepPlayer(game, p, dt) {
   p.hurtT = tick(p.hurtT, dt);
   p.hazardCd = tick(p.hazardCd, dt);
   p.skillCd = tick(p.skillCd || 0, dt);
+  p.boltCd = tick(p.boltCd || 0, dt);
   p.haste = tick(p.haste, dt);
   p.giddy = tick(p.giddy, dt);
   p.chill = tick(p.chill, dt);
