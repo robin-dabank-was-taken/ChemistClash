@@ -477,7 +477,7 @@ export function drawHowTo(ctx) {
         [['R'], 'Empty the active pot'],
         [['S'], 'Chemist skill (5s cooldown)'],
         [['D'], 'Fire bolt (2 dmg)'],
-        [['F'], 'Shuffle hotbar'],
+        [['F'], 'Refresh hotbar (new atoms)'],
       ],
     },
     {

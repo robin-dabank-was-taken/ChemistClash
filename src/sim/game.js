@@ -185,9 +185,7 @@ export function act(game, pid, action) {
 }
 
 function shuffleHotbar(game, p) {
-  const els = p.hotbar.map((s) => s.el);
-  game.rng.shuffle(els);
-  els.forEach((el, i) => { p.hotbar[i].el = el; });
+  for (let i = 0; i < p.hotbar.length; i++) p.hotbar[i].el = drawAtom(game, p);
   emit(game, 'shuffle', { pid: p.id });
   return true;
 }

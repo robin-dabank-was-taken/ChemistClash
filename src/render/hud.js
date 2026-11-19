@@ -122,23 +122,12 @@ export function drawPanel(ctx, p, keys, view, time) {
 
   const lx = x + 396;
   if (keys) {
-    const legend = keys.potA
-      ? [[keys.potA, 'pot A'], [keys.potB, 'pot B'], [keys.run, 'confirm'], [keys.clear, 'empty']]
-      : [[keys.toggle, 'switch'], [keys.run, 'confirm'], [keys.clear, 'empty']];
-    if (keys.skill) legend.push([keys.skill, 'skill']);
-    if (keys.shuffle) legend.push([keys.shuffle, 'shuffle']);
-    if (keys.bolt) legend.push([keys.bolt, 'bolt']);
-    legend.forEach(([cap, label], n) => {
-      keycap(ctx, cap, lx, y + 140 + n * 16, 22, 14);
-      text(ctx, label, lx + 28, y + 147 + n * 16, { size: 9, color: INK, baseline: 'middle' });
-    });
     const skillCd = p.skillCd || 0;
-    const boltCd = p.boltCd || 0;
-    let tip = `${keys.move} move`;
-    let tipColor = DIM;
-    if (skillCd > 0) { tip = `skill ${skillCd.toFixed(1)}s`; tipColor = '#ffb23c'; }
-    else if (boltCd > 0) { tip = `bolt ${boltCd.toFixed(1)}s`; tipColor = '#9fe8ff'; }
-    text(ctx, tip, lx + 110, y + 160, { size: 10, color: tipColor, baseline: 'middle' });
+    if (skillCd > 0) {
+      text(ctx, `skill ${skillCd.toFixed(1)}s`, lx, y + 176, {
+        size: 11, color: '#ffb23c', baseline: 'middle',
+      });
+    }
   } else {
     text(ctx, 'COMPUTER', lx, y + 176, { size: 12, color });
     text(ctx, 'Watch its pots', lx, y + 194, { size: 10, color: DIM, weight: 400 });

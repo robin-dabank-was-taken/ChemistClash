@@ -17,7 +17,7 @@ export const SOLO_BIND_ROWS = [
   { id: 'run', label: 'Confirm reaction' },
   { id: 'clear', label: 'Empty pot' },
   { id: 'skill', label: 'Chemist skill' },
-  { id: 'shuffle', label: 'Shuffle hotbar' },
+  { id: 'shuffle', label: 'Refresh hotbar' },
   { id: 'bolt', label: 'Fire bolt (2 dmg)' },
 ];
 
