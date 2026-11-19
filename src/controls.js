@@ -1,6 +1,6 @@
 // Rebindable controls for solo / online (room-code) play. Persisted in localStorage.
 
-const STORAGE_KEY = 'chemistClash.soloBinds.v1';
+const STORAGE_KEY = 'chemistClash.soloBinds.v2';
 
 export const SOLO_BIND_ROWS = [
   { id: 'up', label: 'Move up' },
@@ -22,22 +22,22 @@ export const SOLO_BIND_ROWS = [
 ];
 
 export const DEFAULT_SOLO_BINDS = {
-  up: 'ArrowUp',
-  down: 'ArrowDown',
-  left: 'ArrowLeft',
-  right: 'ArrowRight',
-  slot0: 'Digit1',
-  slot1: 'Digit2',
-  slot2: 'Digit3',
-  slot3: 'Digit4',
-  slot4: 'Digit5',
+  up: 'KeyI',
+  down: 'KeyK',
+  left: 'KeyJ',
+  right: 'KeyL',
+  slot0: 'KeyA',
+  slot1: 'KeyS',
+  slot2: 'KeyD',
+  slot3: 'KeyF',
+  slot4: 'KeyG',
   potA: 'KeyQ',
   potB: 'KeyW',
-  run: 'KeyE',
-  clear: 'KeyR',
-  skill: 'KeyS',
-  shuffle: 'KeyF',
-  bolt: 'KeyD',
+  run: 'KeyC',
+  clear: 'KeyV',
+  skill: 'KeyE',
+  shuffle: 'ShiftLeft',
+  bolt: 'Space',
 };
 
 let soloBinds = { ...DEFAULT_SOLO_BINDS };
@@ -99,6 +99,7 @@ export function codeLabel(code) {
   const special = {
     ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
     Comma: ',', Period: '.', Space: 'SPACE', Slash: '/',
+    ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT',
     Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']',
     Minus: '-', Equal: '=', Backquote: '`',
   };

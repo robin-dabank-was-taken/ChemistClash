@@ -418,7 +418,7 @@ function keyRow(ctx, x, y, caps, label) {
 const TRUMP = RECIPES.find((r) => r.id === TRUMP_ID);
 const RULES = [
   'Pick a chemist before each match. Each one buffs one chemistry family (acids, bases, toxins, …) and weakens another. Oleanolic acid is its own NUKE type.',
-  'Versus the computer or online: arrows move, 1–5 throw atoms, Q and W select pot A or B, E confirms, R empties, S uses your chemist skill (5s cooldown). Local P1 uses C for skill.',
+  'Online rooms use the same bindings as versus the computer. Two players on one keyboard: P1 is WASD with C for the skill, and P2 is the card on the right.',
   'Each chemist has a unique basic skill that deals 2 damage plus a rider (acid puddle, alkali ripple, toxin mist, ignite clouds, front wall, or next heal ×2).',
   'Online: host a room, share the 4-character code, both pick chemists — the server runs the match so both sides stay in sync.',
   'Your hotbar always holds 5 atoms. The moment you throw one, a new one takes its place. Hydrogen and carbon turn up most.',
@@ -469,15 +469,15 @@ export function drawHowTo(ctx) {
     {
       x: 70, title: 'VS COMPUTER', color: PLAYER_COLORS[0],
       rows: [
-        [['↑', '←', '↓', '→'], 'Move one tile'],
-        [['1', '…', '5'], 'Throw that hotbar atom into the active pot'],
+        [['I', 'J', 'K', 'L'], 'Move one tile'],
+        [['A', '…', 'G'], 'Throw that hotbar atom into the active pot'],
         [['Q'], 'Select pot A'],
         [['W'], 'Select pot B'],
-        [['E'], 'Confirm reaction'],
-        [['R'], 'Empty the active pot'],
-        [['S'], 'Chemist skill (5s cooldown)'],
-        [['D'], 'Fire bolt (2 dmg)'],
-        [['F'], 'Refresh hotbar (new atoms)'],
+        [['E'], 'Chemist skill (5s cooldown)'],
+        [['C'], 'Confirm reaction'],
+        [['V'], 'Empty the active pot'],
+        [['SPACE'], 'Fire bolt (2 dmg)'],
+        [['SHIFT'], 'Refresh hotbar (new atoms)'],
       ],
     },
     {
@@ -494,17 +494,17 @@ export function drawHowTo(ctx) {
     },
   ];
   for (const c of cards) {
-    rr(ctx, c.x, 72, 550, 248, 14);
+    rr(ctx, c.x, 64, 550, 276, 14);
     ctx.fillStyle = 'rgba(13,20,36,0.94)';
     ctx.fill();
     ctx.strokeStyle = alpha(c.color, 0.5);
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    text(ctx, c.title, c.x + 22, 100, { size: 16, color: c.color });
-    c.rows.forEach((row, i) => keyRow(ctx, c.x + 22, 112 + i * 28, row[0], row[1]));
-    if (c.note) text(ctx, c.note, c.x + 22, 300, { size: 11, color: DIM, weight: 400 });
+    text(ctx, c.title, c.x + 22, 86, { size: 16, color: c.color });
+    c.rows.forEach((row, i) => keyRow(ctx, c.x + 22, 98 + i * 26, row[0], row[1]));
+    if (c.note) text(ctx, c.note, c.x + 22, 262, { size: 11, color: DIM, weight: 400 });
   }
-  let y = 348;
+  let y = 356;
   for (const rule of RULES) {
     circle(ctx, 84, y - 5, 3.5);
     ctx.fillStyle = PLAYER_COLORS[0];
