@@ -14,10 +14,11 @@ const STRIKE_COLOR = {
   water: '#5db8ff', frost: '#c9eeff', acid: '#9be33c', fire: '#ff8a3c', cyanide: '#c77dff', blast: '#ffd24a',
   knockout: '#d9c2ff', solvent: '#ff9ecf', trump: '#fff0a8', wall: '#c4b49a', base: '#86a8ff',
 };
-const BOLT_COLOR = { acid: '#a9f04a', rocket: '#ffb23c', spark: '#e9f6ff' };
+const BOLT_COLOR = { acid: '#a9f04a', rocket: '#ffb23c', spark: '#e9f6ff', base: '#86a8ff', poison: '#d49bff' };
 const DAMAGE_COLOR = { burn: '#ff9d4a', acid: '#b6f25a', gas: '#d6e86a', frost: '#bfe9ff', water: '#7cc6ff', poison: '#d49bff', blast: '#ffd24a', base: '#86a8ff' };
 const STATUS_TEXT = {
-  haste: 'HASTE', frozen: 'FROZEN!', chill: 'CHILLED', shield: 'SHIELD', stun: 'KNOCKED OUT!', healamp: 'HEAL ×2',
+  haste: 'HASTE', frozen: 'FROZEN!', chill: 'CHILLED', shield: 'SHIELD', stun: 'KNOCKED OUT!',
+  healamp: 'HEAL ×2', lifesteal: 'LIFESTEAL', healCut: 'HEAL CUT',
 };
 
 const FEET = 16; // how far below the tile centre a chemist's feet sit
@@ -81,15 +82,17 @@ export class FieldView {
         break;
       case 'toggle': sfx.play('toggle'); break;
       case 'deny': sfx.play('deny'); break;
-      case 'react-start':
+      case 'react-start': {
         // Short cast punch on confirm — not the whole brew duration.
         if (this.anim?.[ev.pid]) this.anim[ev.pid].castT = Math.max(this.anim[ev.pid].castT, 0.4);
-        if (ev.recipe && RECIPE_BY_ID[ev.recipe].time > 0) sfx.play('start');
+        const startRecipe = recipeOf(game, ev.recipe);
+        if (startRecipe && startRecipe.time > 0) sfx.play('start');
         break;
+      }
       case 'react-done': {
         const f = this.feet(ev.pid);
-        const r = RECIPE_BY_ID[ev.recipe];
-        this.float(f.x, f.y - 92, `${r.label}  ${r.name}`, PLAYER_COLORS[ev.pid], 15);
+        const r = recipeOf(game, ev.recipe);
+        if (r) this.float(f.x, f.y - 92, `${r.label}  ${r.name}`, PLAYER_COLORS[ev.pid], 15);
         this.potPulse[ev.pid][ev.pot] = 1;
         if (this.anim?.[ev.pid]) this.anim[ev.pid].castT = Math.max(this.anim[ev.pid].castT, 0.35);
         break;
@@ -188,7 +191,7 @@ export class FieldView {
   }
 
   onStrike(ev, sfx) {
-    const color = ev.kind === 'gas' ? GASES[ev.gas].color : STRIKE_COLOR[ev.kind];
+    const color = (ev.kind === 'gas' ? GASES[ev.gas]?.color : STRIKE_COLOR[ev.kind]) || '#e9f6ff';
     for (const i of ev.tiles) {
       if (ev.kind === 'gas') this.tileBurst(i, color, 4, 60, { gravity: -20, size: 9, life: 0.7 });
       else if (ev.kind === 'water') this.tileBurst(i, color, 7, 150, { up: 120 });
@@ -318,6 +321,7 @@ export class FieldView {
         const rect = tileRect(c, r);
         if (tile.surf === 'fire') drawFlames(ctx, rect, r * COLS + c, time, Math.min(1, tile.t / 0.4));
         if (tile.gas) drawGas(ctx, rect, r * COLS + c, tile.gas, time);
+        if (tile.glitch) drawGlitch(ctx, rect, r * COLS + c, tile.glitch, time, game);
       }
     }
     for (const p of game.players) if (this.pos) drawBrewing(ctx, p, this.pos[p.id]);
@@ -498,6 +502,7 @@ function drawFlames(ctx, { x, y, w, h }, i, time, fade) {
 
 function drawGas(ctx, { x, y, w, h }, i, gas, time) {
   const g = GASES[gas.kind];
+  if (!g) return;
   const fade = Math.min(1, gas.t / 0.6);
   for (let k = 0; k < 22; k++) {
     const px = Math.round(x + w * hash(i, k) + Math.sin(time * 1.2 + k) * 4);
@@ -510,8 +515,38 @@ function drawGas(ctx, { x, y, w, h }, i, gas, time) {
   }
 }
 
+function drawGlitch(ctx, { x, y, w, h }, i, glitch, time, game) {
+  const table = game?.pack?.glitches || {};
+  const g = table[glitch.kind];
+  if (!g) return;
+  const fade = Math.min(1, glitch.t / 0.6);
+  const jitter = Math.sin(time * 30 + i) * 2;
+  ctx.save();
+  ctx.globalAlpha = (g.alpha || 0.4) * fade;
+  ctx.fillStyle = g.color;
+  ctx.fillRect(x + 2 + jitter, y + 2, w - 4, 3);
+  ctx.fillRect(x + 2 - jitter, y + h - 5, w - 4, 3);
+  for (let k = 0; k < 6; k++) {
+    const py = y + 8 + ((hash(i, k) + time * 2) % 1) * (h - 16);
+    ctx.fillStyle = alpha(g.color, 0.55 + 0.45 * hash(i, k + 3));
+    ctx.fillRect(x + 4 + (k % 2) * 2 + jitter, Math.round(py), w - 10, 2);
+  }
+  // RGB split bars
+  ctx.globalAlpha = 0.35 * fade;
+  ctx.fillStyle = '#ff4d6a';
+  ctx.fillRect(x + 1 + jitter, y + h * 0.3, w - 2, 2);
+  ctx.fillStyle = '#4dffe0';
+  ctx.fillRect(x + 1 - jitter, y + h * 0.6, w - 2, 2);
+  ctx.restore();
+}
+
+function recipeOf(game, id) {
+  if (!id) return null;
+  return game?.pack?.RECIPE_BY_ID?.[id] || RECIPE_BY_ID[id] || null;
+}
+
 function drawTelegraph(ctx, s, time) {
-  const color = s.kind === 'gas' ? GASES[s.gas].color : STRIKE_COLOR[s.kind];
+  const color = (s.kind === 'gas' ? GASES[s.gas]?.color : STRIKE_COLOR[s.kind]) || '#e9f6ff';
   const k = Math.min(1, s.t / s.delay);
   const blink = Math.floor(time * 12) % 2;
   for (const i of s.tiles) {

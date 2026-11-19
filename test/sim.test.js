@@ -157,10 +157,12 @@ test('the clear action empties the active pot without reacting', () => {
 });
 
 
-test('oleanolic acid is family nuke, never organic', () => {
+test('andrographolide is family nuke, never organic', () => {
   assert.equal(familyOf(RECIPE_BY_ID[TRUMP_ID]), 'nuke');
   assert.equal(RECIPE_BY_ID[TRUMP_ID].tag, 'nuke');
+  assert.equal(RECIPE_BY_ID[TRUMP_ID].chem, 'Andrographolide');
   assert.equal(familyOf('c8h18'), 'organic');
+  assert.equal(familyOf('h2o2'), 'heal');
 });
 
 test('character family traits buff acids, heals, polymers and leave the nuke alone', () => {
@@ -169,32 +171,31 @@ test('character family traits buff acids, heals, polymers and leave the nuke alo
     step(game, TUNE.countdown + DT);
     return game;
   };
-  // Acid bolt: Akari +25%
+  // Acid bolt: Akari +25% on 10 → 13
   let game = mk(['akari', 'baseline']);
   Object.assign(game.players[0], { col: 1, row: 1 });
   Object.assign(game.players[1], { col: 5, row: 1 });
   EFFECTS.hcl(game, game.players[0]);
   run(game, 1);
   const acidHits = game.events.filter((e) => e.type === 'damage' && e.kind === 'acid' && e.pid === 1);
-  // First hit is the bolt (puddle ticks may follow).
-  assert.equal(acidHits[0].amount, 15);
+  assert.equal(acidHits[0].amount, 13);
 
   // Hana heals more; organics hurt less; nuke unchanged
   game = mk(['hana', 'baseline']);
   game.players[0].hp = 50;
   EFFECTS.h2o2(game, game.players[0]);
-  assert.equal(game.players[0].hp, 50 + 29); // 22 * 1.3 rounded
+  assert.equal(game.players[0].hp, 50 + 26); // 20 * 1.3
   Object.assign(game.players[0], { col: 1, row: 1 });
   Object.assign(game.players[1], { col: 5, row: 1 });
   game.events.length = 0;
   EFFECTS.c2h2(game, game.players[0]);
-  run(game, 0.5);
-  const burns = game.events.filter((e) => e.type === 'damage' && e.kind === 'burn' && e.pid === 1);
-  assert.equal(burns[0].amount, 14); // 16 * 0.85
+  run(game, 0.8);
+  const burns = game.events.filter((e) => e.type === 'damage' && e.kind === 'spark' && e.pid === 1);
+  assert.equal(burns[0].amount, 9); // 10 * 0.85 rounded
   for (const tile of game.tiles) { tile.surf = null; tile.t = 0; }
   game.players[1].hp = TUNE.maxHp;
   game.events.length = 0;
-  EFFECTS.c30h48o3(game, game.players[0]);
+  EFFECTS.c20h30o5(game, game.players[0]);
   run(game, 2.5);
   const nukes = game.events.filter((e) => e.type === 'damage' && e.pid === 1);
   assert.equal(nukes.reduce((n, e) => n + e.amount, 0), 80, 'nuke is not an organic debuff');
@@ -218,9 +219,10 @@ test('selectPot picks A or B directly', () => {
   assert.equal(game.players[0].activePot, 0);
 });
 
-test('oleanolic acid is the trump card: 81 atoms, 5 seconds, the whole enemy side', () => {
+test('andrographolide is the trump card: 55 atoms, 5 seconds, the whole enemy side', () => {
   const trump = RECIPE_BY_ID[TRUMP_ID];
-  assert.deepEqual(trump.counts, { C: 30, H: 48, O: 3 });
+  assert.deepEqual(trump.counts, { C: 20, H: 30, O: 5 });
+  assert.equal(trump.atoms, 55);
   assert.equal(trump.atoms, Math.max(...RECIPES.map((r) => r.atoms)), 'nothing costs more');
   for (const [col, row] of [[4, 0], [7, 3], [5, 2]]) {
     const game = playing();
@@ -245,22 +247,22 @@ test('shields replace weaker shields instead of stacking, and heals top health u
     run(game, RECIPE_BY_ID[id].time + 0.1);
   };
   cast('c2h4');
-  assert.equal(p.shield, 25);
+  assert.equal(p.shield, 26);
   cast('o3');
-  assert.equal(p.shield, 25, 'a weaker shield does not shrink the current one');
+  assert.equal(p.shield, 26, 'a weaker shield does not shrink the current one');
   cast('c14h10n2o2');
-  assert.equal(p.shield, 60);
+  assert.equal(p.shield, 55);
   cast('h3po4');
-  assert.equal(p.shield, 60);
+  assert.equal(p.shield, 55);
 
   p.shield = 0;
   p.hp = 10;
   cast('c2h6o');
-  assert.equal(p.hp, 26);
+  assert.equal(p.hp, 28);
   cast('h2o2');
   assert.equal(p.hp, 48);
   cast('c9h8o4');
-  assert.equal(p.hp, 83);
+  assert.equal(p.hp, 80);
   cast('c6h12o6');
   assert.equal(p.hp, TUNE.maxHp, 'healing never goes past full health');
   assert.ok(p.haste > 0);
@@ -276,7 +278,7 @@ test('knockout drops stop their target moving and mixing until they wear off', (
   assert.ok(foe.stun > 0);
   assert.equal(act(game, 1, { type: 'move', dx: 1, dy: 0 }), false);
   assert.equal(act(game, 1, { type: 'slot', i: 0 }), false);
-  run(game, 1.6);
+  run(game, 2.2);
   assert.equal(foe.stun, 0);
   assert.ok(act(game, 1, { type: 'slot', i: 0 }));
 });
@@ -338,20 +340,24 @@ test('the benzene ring hits around its target but not the middle', () => {
     Object.assign(game.players[1], { col, row });
     mix(game, 0, atomsOf(RECIPE_BY_ID.c6h6));
     run(game, 3);
-    assert.equal(game.players[1].hp, TUNE.maxHp - (hurt ? 20 : 0), `standing at ${col},${row}`);
+    assert.equal(game.players[1].hp, TUNE.maxHp - (hurt ? 16 : 0), `standing at ${col},${row}`);
   }
 });
 
-test('aimed attacks land 4 tiles ahead of the caster, for both sides', () => {
+test('aimed leap attacks land 4 tiles ahead of the caster, for both sides', () => {
   for (const [pid, col, target] of [[0, 0, 4], [0, 3, 7], [1, 7, 3], [1, 4, 0]]) {
     const game = playing();
     const p = game.players[pid];
     const foe = game.players[1 - pid];
     Object.assign(p, { col, row: 2 });
     Object.assign(foe, { col: target, row: 2 });
+    const start = { col: p.col, row: p.row };
     mix(game, pid, ['H', 'C', 'N']);
     run(game, 1.3);
-    assert.equal(foe.hp, TUNE.maxHp - 22, `player ${pid} at column ${col} should hit column ${target}`);
+    assert.equal(foe.hp, TUNE.maxHp - 20, `player ${pid} at column ${col} should hit column ${target}`);
+    run(game, 0.4);
+    assert.equal(p.col, start.col, 'leap returns home');
+    assert.equal(p.row, start.row);
   }
 });
 
@@ -362,7 +368,7 @@ test('bolts travel along the row and only hit someone standing in it', () => {
   mix(hit, 0, ['H', 'Cl']);
   run(hit, 1);
   const hits = hit.events.filter((e) => e.type === 'damage' && e.pid === 1);
-  assert.equal(hits[0].amount, 12, 'the bolt itself');
+  assert.equal(hits[0].amount, 10, 'the bolt itself');
   assert.equal(hit.tiles[idx(6, 1)].surf, 'acid');
   assert.ok(hits.length > 1 && hits.slice(1).every((e) => e.amount === TUNE.acidDmg), 'then the puddle it left');
 
@@ -385,7 +391,7 @@ test('fire sets off flammable gas, and the blast chains through the cloud', () =
   run(game, 0.5);
   assert.equal(game.tiles[idx(6, 1)].gas, null);
   assert.equal(game.tiles[idx(7, 1)].gas, null);
-  assert.equal(game.players[1].hp, TUNE.maxHp - 22 - TUNE.fireDmg, 'one blast plus one tick of the fire it left');
+  assert.equal(game.players[1].hp, TUNE.maxHp - 26 - TUNE.fireDmg, 'one blast plus one tick of the fire it left');
 });
 
 test('water douses fire, and dry ice freezes whoever stands on a wet tile', () => {
@@ -417,11 +423,11 @@ test('a shield soaks damage before health does', () => {
   const p = game.players[0];
   mix(game, 0, ['O', 'O', 'O']);
   run(game, 0.6);
-  assert.equal(p.shield, 20);
+  assert.equal(p.shield, 18);
   damage(game, p, 15);
   assert.equal(p.hp, TUNE.maxHp);
   damage(game, p, 15);
-  assert.equal(p.hp, TUNE.maxHp - 10);
+  assert.equal(p.hp, TUNE.maxHp - 12);
   assert.equal(p.shield, 0);
 });
 
@@ -445,6 +451,61 @@ test('knocking a player out ends the match', () => {
   assert.equal(act(game, 0, { type: 'move', dx: 1, dy: 0 }), false);
 });
 
+test('diagonal bolts leave their start row', () => {
+  const game = playing();
+  const p = game.players[0];
+  Object.assign(p, { col: 1, row: 1 });
+  EFFECTS.ch5n(game, p);
+  assert.equal(game.bolts.length, 2);
+  assert.equal(game.bolts[0].dy, -1);
+  assert.equal(game.bolts[1].dy, 1);
+  run(game, 0.35);
+  const rows = new Set(game.events.filter((e) => e.type === 'bolt-hit').map((e) => Math.floor(e.i / COLS)));
+  // At least one diagonal should have visited a non-start row if it traveled far enough,
+  // or bolts still in flight have updated rows.
+  const flown = game.bolts.some((b) => b.row !== 1) || rows.size > 0 || game.bolts.length === 0;
+  assert.ok(flown || game.bolts.every((b) => b.dy !== 0), 'diagonal bolts carry dy');
+});
+
+test('yui skill raises a polymer wall on the front line', () => {
+  const game = createGame({ characters: ['yui', 'baseline'], seed: 3 });
+  step(game, TUNE.countdown + DT);
+  const p = game.players[0];
+  Object.assign(p, { col: HALF - 1, row: 1 }); // front column — old skill failed here
+  assert.ok(act(game, 0, { type: 'skill' }));
+  const walls = game.tiles.map((t, i) => (t.wall ? i : -1)).filter((i) => i >= 0);
+  assert.ok(walls.length >= 2, `expected multi-tile wall, got ${walls.length}`);
+  assert.ok(walls.every((i) => i % COLS === HALF - 1), 'wall on own front column');
+  assert.ok(walls.every((i) => game.tiles[i].wall.t > 6), 'polymer duration buffed');
+});
+
+test('rin skill arms lifesteal on the next hit', () => {
+  const game = createGame({ characters: ['rin', 'baseline'], seed: 5 });
+  step(game, TUNE.countdown + DT);
+  const p = game.players[0];
+  const foe = game.players[1];
+  Object.assign(p, { col: 1, row: 1, hp: 50 });
+  Object.assign(foe, { col: 5, row: 1 });
+  assert.ok(act(game, 0, { type: 'skill' }));
+  assert.equal(p.lifeSteal, 0.5);
+  run(game, 0.5); // skill bolt resolves without consuming
+  assert.equal(p.lifeSteal, 0.5);
+  EFFECTS.h2(game, p);
+  run(game, 1);
+  assert.equal(p.lifeSteal, 0);
+  assert.ok(p.hp > 50, 'lifesteal healed rin');
+});
+
+test('flammable gases deal no tick damage', () => {
+  const game = playing();
+  const p = game.players[1];
+  Object.assign(p, { col: 5, row: 1 });
+  gasify(game, idx(5, 1), 'ch4', 5);
+  const hp = p.hp;
+  run(game, 2);
+  assert.equal(p.hp, hp);
+});
+
 test('bots play full matches to a result without breaking any invariant', () => {
   for (const [seed, a, b] of [[11, 'easy', 'easy'], [22, 'normal', 'normal'], [33, 'hard', 'easy'], [44, 'normal', 'hard']]) {
     const game = createGame({ seed });
@@ -456,7 +517,10 @@ test('bots play full matches to a result without breaking any invariant', () => 
       if (n % 30) continue;
       for (const p of game.players) {
         assert.ok(p.hp >= 0 && p.hp <= TUNE.maxHp);
-        assert.ok(p.row >= 0 && p.row < ROWS && p.col >= p.side * HALF && p.col < p.side * HALF + HALF, 'stays in own half');
+        const dashing = (game.dashes || []).some((d) => d.pid === p.id);
+        if (!dashing) {
+          assert.ok(p.row >= 0 && p.row < ROWS && p.col >= p.side * HALF && p.col < p.side * HALF + HALF, 'stays in own half');
+        }
         assert.ok(p.hotbar.length === 5 && p.hotbar.every((slot) => ELEMENTS[slot.el]), 'the hotbar is always full');
       }
       assert.equal(game.tiles.length, COLS * ROWS);

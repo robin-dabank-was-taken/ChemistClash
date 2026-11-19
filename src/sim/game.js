@@ -1,23 +1,23 @@
 // The rules of a match. Pure simulation: no DOM, no drawing. Everything a
 // player (human or bot) can do goes through act(); time advances through step().
-import { COLS, ROWS, GASES, findRecipe, buildBag } from '../data.js';
-import '../families.js'; // stamp recipe.family at load
-import { DEFAULT_CHARACTER_ID } from '../characters.js';
+import { COLS, ROWS, GASES } from '../data.js';
+import '../families.js'; // stamp chem recipe.family at load
+import { DEFAULT_CHARACTER_ID, getCharacter } from '../characters.js';
+import { getPack, DEFAULT_PACK_ID } from '../packs/index.js';
 import { makeRng } from './rng.js';
 import { EFFECTS } from './effects.js';
 import { attachCharacter } from './traits.js';
 import {
-  TUNE, idx, inField, sideOfCol, emit, damage, reactionRate, explode, stepBolt, addBolt,
+  TUNE, idx, inField, sideOfCol, emit, damage, reactionRate, explode, explodeGlitch, stepBolt, addBolt,
 } from './world.js';
 import { castSkill } from './skills.js';
 
 const HOTBAR_SIZE = 5;
 const MAX_EVENTS = 4000;
 
-// Atoms come off a shuffled bag; an empty bag is replaced by a fresh one, so
-// the supply is endless but never drifts far from the bag's proportions.
+// Tokens come off a shuffled bag; an empty bag is replaced by a fresh one.
 function drawAtom(game, p) {
-  if (!p.bag.length) p.bag = game.rng.shuffle(buildBag());
+  if (!p.bag.length) p.bag = game.rng.shuffle(game.pack.buildBag());
   return p.bag.pop();
 }
 
@@ -34,7 +34,7 @@ function makePlayer(game, id, name, characterId) {
     pots: [0, 1].map(() => ({ atoms: [], state: 'idle', recipe: null, t: 0, total: 0 })),
     activePot: 0,
     shield: 0, shieldT: 0, haste: 0, giddy: 0, chill: 0, frozen: 0, stun: 0,
-    skillCd: 0, healAmp: 0, boltCd: 0,
+    skillCd: 0, healAmp: 0, lifeSteal: 0, healCut: 0, boltCd: 0,
   };
   attachCharacter(p, characterId || DEFAULT_CHARACTER_ID);
   for (let i = 0; i < HOTBAR_SIZE; i++) p.hotbar.push({ el: drawAtom(game, p) });
@@ -45,14 +45,20 @@ export function createGame({
   seed = (Math.random() * 2 ** 32) >>> 0,
   names = ['Player 1', 'Player 2'],
   characters = [DEFAULT_CHARACTER_ID, DEFAULT_CHARACTER_ID],
+  packId = null,
 } = {}) {
+  const resolvedPack = packId
+    || getCharacter(characters[0])?.pack
+    || DEFAULT_PACK_ID;
   const game = {
     rng: makeRng(seed),
+    packId: resolvedPack,
+    pack: getPack(resolvedPack),
     time: 0,
     phase: 'countdown', // countdown -> playing -> over
     countdown: TUNE.countdown,
     winner: null, // player id, or -1 for a draw
-    tiles: Array.from({ length: COLS * ROWS }, () => ({ surf: null, t: 0, gas: null, wall: null })),
+    tiles: Array.from({ length: COLS * ROWS }, () => ({ surf: null, t: 0, gas: null, glitch: null, wall: null })),
     players: [],
     bolts: [],
     strikes: [],
@@ -121,7 +127,8 @@ function finishPot(game, p, k) {
   pot.total = 0;
   if (recipe) {
     emit(game, 'react-done', { pid: p.id, pot: k, recipe: recipe.id });
-    EFFECTS[recipe.id](game, p, recipe);
+    const fx = game.pack.effects[recipe.id] || EFFECTS[recipe.id];
+    if (fx) fx(game, p, recipe);
   } else {
     emit(game, 'fizzle', { pid: p.id, pot: k });
   }
@@ -135,7 +142,7 @@ function runPot(game, p) {
     return false;
   }
   // Atoms that do not add up to a known molecule still "react": they fizzle.
-  pot.recipe = findRecipe(pot.atoms);
+  pot.recipe = game.pack.findRecipe(pot.atoms);
   pot.state = 'reacting';
   pot.t = 0;
   pot.total = pot.recipe ? pot.recipe.time : TUNE.fizzleTime;
@@ -216,6 +223,7 @@ function stepPlayer(game, p, dt) {
   p.chill = tick(p.chill, dt);
   p.frozen = tick(p.frozen, dt);
   p.stun = tick(p.stun, dt);
+  p.healCut = tick(p.healCut || 0, dt);
   if (p.shieldT > 0) {
     p.shieldT = tick(p.shieldT, dt);
     if (p.shieldT === 0) p.shield = 0;
@@ -234,8 +242,12 @@ function stepPlayer(game, p, dt) {
 function stepHazards(game, p) {
   const tile = game.tiles[idx(p.col, p.row)];
   if (tile.surf === 'frost') p.chill = Math.max(p.chill, 1);
-  const gas = tile.gas ? GASES[tile.gas.kind] : null;
+  const gases = game.pack?.gases || GASES;
+  const glitches = game.pack?.glitches || {};
+  const gas = tile.gas ? gases[tile.gas.kind] : null;
+  const glitch = tile.glitch ? glitches[tile.glitch.kind] : null;
   if (gas && gas.giddy) p.giddy = Math.max(p.giddy, gas.giddy);
+  if (glitch && glitch.giddy) p.giddy = Math.max(p.giddy, glitch.giddy);
   if (p.hazardCd > 0) return;
   // The cooldown starts even when a shield soaks the tick, so shields drain at
   // the same pace health would.
@@ -250,6 +262,10 @@ function stepHazards(game, p) {
   }
   if (gas && gas.dmg) {
     damage(game, p, gas.dmg, 'gas');
+    exposed = true;
+  }
+  if (glitch && glitch.dmg) {
+    damage(game, p, glitch.dmg, 'glitch');
     exposed = true;
   }
   if (exposed) p.hazardCd = TUNE.hazardTick;
@@ -293,10 +309,13 @@ export function step(game, dt) {
     const lit = [];
     for (const f of game.fuses) {
       f.t -= dt;
-      if (f.t <= 0) lit.push(f.i);
+      if (f.t <= 0) lit.push(f);
     }
     game.fuses = game.fuses.filter((f) => f.t > 0);
-    for (const i of lit) explode(game, i);
+    for (const f of lit) {
+      if (f.glitch) explodeGlitch(game, f.i);
+      else explode(game, f.i);
+    }
   }
 
   if (game.dashes?.length) {
@@ -324,6 +343,10 @@ export function step(game, dt) {
     if (tile.gas) {
       tile.gas.t -= dt;
       if (tile.gas.t <= 0) tile.gas = null;
+    }
+    if (tile.glitch) {
+      tile.glitch.t -= dt;
+      if (tile.glitch.t <= 0) tile.glitch = null;
     }
     if (tile.wall) {
       tile.wall.t -= dt;

@@ -5,7 +5,7 @@ import { Input, getSoloKeys, KEYS_P1, KEYS_P2 } from './input.js';
 import {
   SOLO_BIND_ROWS, getSoloBinds, rebindSolo, resetSoloBinds, loadSoloBinds,
 } from './controls.js';
-import { CHARACTERS, pickBotCharacter, getCharacter } from './characters.js';
+import { SELECTABLE_CHARACTERS, pickBotCharacter, getCharacter } from './characters.js';
 import { Sfx } from './audio.js';
 import { W, H } from './render/layout.js';
 import { text } from './render/draw.js';
@@ -13,7 +13,7 @@ import { FieldView } from './render/field.js';
 import { drawTopBar, drawThermometers, drawPanel } from './render/hud.js';
 import { preloadPortraits } from './render/sprites.js';
 import {
-  MENU, BOOK_PAGES, drawBackdrop, drawMenu, drawHowTo, drawBook, drawSelect,
+  MENU, BOOK_PAGES, bookPagesFor, drawBackdrop, drawMenu, drawHowTo, drawBook, drawSelect,
   drawCountdown, drawPause, drawResult, drawOnlineGate, drawOnlineJoin, drawOnlineLobby,
   drawControls,
 } from './render/screens.js';
@@ -32,7 +32,7 @@ const sfx = new Sfx();
 const view = new FieldView();
 const net = new NetClient();
 
-preloadPortraits(CHARACTERS.map((c) => c.id));
+preloadPortraits(SELECTABLE_CHARACTERS);
 
 export const app = {
   screen: 'menu', // menu | howto | select | online | join | lobby | controls | game
@@ -40,6 +40,7 @@ export const app = {
   menuRects: [],
   book: false,
   bookPage: 0,
+  bookPackId: 'chemistry',
   mode: 'bot',
   select: null,
   picks: [null, null],
@@ -202,7 +203,7 @@ async function joinOnline(code) {
 function lockSelect() {
   const s = app.select;
   if (!s) return;
-  s.picks[s.picking] = CHARACTERS[s.cursor].id;
+  s.picks[s.picking] = SELECTABLE_CHARACTERS[s.cursor].id;
   sfx.play('select');
 
   if (s.mode === 'online') {
@@ -225,13 +226,16 @@ function lockSelect() {
     s.picking = 1;
     if (s.mode === 'bot') {
       const level = BOT_LEVELS[app.menu.level];
-      const id = pickBotCharacter({ next: () => Math.random() }, level);
+      const packId = getCharacter(s.picks[0]).pack || 'chemistry';
+      const id = pickBotCharacter({ next: () => Math.random() }, level, packId);
       s.picks[1] = id;
-      s.cursor = Math.max(0, CHARACTERS.findIndex((c) => c.id === id));
+      s.cursor = Math.max(0, SELECTABLE_CHARACTERS.findIndex((c) => c.id === id));
       startMatch(s.mode, s.picks);
       return;
     }
-    s.cursor = 0;
+    // Local P2: stay on the same science row as P1.
+    const packId = getCharacter(s.picks[0]).pack || 'chemistry';
+    s.cursor = Math.max(0, SELECTABLE_CHARACTERS.findIndex((c) => (c.pack || 'chemistry') === packId));
     return;
   }
   startMatch(s.mode, s.picks);
@@ -249,7 +253,9 @@ function startMatch(mode, characters) {
       ? [c0.name, `${c1.name} · ${level}`]
       : [c0.name, c1.name],
     characters: chars,
+    packId: c0.pack || 'chemistry',
   });
+  app.packId = app.game.packId;
   app.bot = mode === 'bot' ? createBot(1, level) : null;
   app.humans = mode === 'bot'
     ? [{ pid: 0, keys: getSoloKeys() }]
@@ -315,12 +321,30 @@ function onKey(code, repeat) {
   if (app.book) {
     if (repeat) return true;
     if (code === 'Tab' || code === 'Escape' || CONFIRM.includes(code)) app.book = false;
-    else if (code === 'KeyA' || code === 'ArrowLeft') app.bookPage = (app.bookPage + BOOK_PAGES - 1) % BOOK_PAGES;
-    else if (code === 'KeyD' || code === 'ArrowRight') app.bookPage = (app.bookPage + 1) % BOOK_PAGES;
+    else if (code === 'KeyQ') {
+      app.bookPackId = 'chemistry';
+      app.bookPage = 0;
+      sfx.play('menu');
+    } else if (code === 'KeyW') {
+      app.bookPackId = 'physics';
+      app.bookPage = 0;
+      sfx.play('menu');
+    } else if (code === 'KeyA' || code === 'ArrowLeft') {
+      const packId = app.game?.packId || app.bookPackId || 'chemistry';
+      const n = bookPagesFor(packId).length;
+      app.bookPage = (app.bookPage + n - 1) % n;
+    } else if (code === 'KeyD' || code === 'ArrowRight') {
+      const packId = app.game?.packId || app.bookPackId || 'chemistry';
+      const n = bookPagesFor(packId).length;
+      app.bookPage = (app.bookPage + 1) % n;
+    }
     return true;
   }
   if (code === 'Tab' && app.screen === 'game') {
-    if (!repeat) app.book = true;
+    if (!repeat) {
+      app.book = true;
+      app.bookPackId = app.game?.packId || app.bookPackId || 'chemistry';
+    }
     input.reset();
     return true;
   }
@@ -461,11 +485,30 @@ function onKey(code, repeat) {
       } else toMenu();
       return true;
     }
+    const chemCount = SELECTABLE_CHARACTERS.filter((c) => c.pack !== 'physics').length;
+    const physCount = SELECTABLE_CHARACTERS.length - chemCount;
+    const lockPack = s.picking === 1 && s.picks[0]
+      ? (getCharacter(s.picks[0]).pack || 'chemistry')
+      : null;
     if (code === 'KeyA' || code === 'ArrowLeft') {
-      s.cursor = (s.cursor + CHARACTERS.length - 1) % CHARACTERS.length;
+      if (s.cursor < chemCount) {
+        s.cursor = (s.cursor + chemCount - 1) % chemCount;
+      } else {
+        const k = s.cursor - chemCount;
+        s.cursor = chemCount + ((k + physCount - 1) % physCount);
+      }
       sfx.play('menu');
     } else if (code === 'KeyD' || code === 'ArrowRight') {
-      s.cursor = (s.cursor + 1) % CHARACTERS.length;
+      if (s.cursor < chemCount) {
+        s.cursor = (s.cursor + 1) % chemCount;
+      } else {
+        const k = s.cursor - chemCount;
+        s.cursor = chemCount + ((k + 1) % physCount);
+      }
+      sfx.play('menu');
+    } else if ((code === 'KeyW' || code === 'ArrowUp' || code === 'KeyS' || code === 'ArrowDown') && !lockPack) {
+      if (s.cursor < chemCount) s.cursor = chemCount + Math.min(s.cursor, physCount - 1);
+      else s.cursor = Math.min(s.cursor - chemCount, chemCount - 1);
       sfx.play('menu');
     } else if (CONFIRM.includes(code) || code === 'KeyE') lockSelect();
     return true;
@@ -560,7 +603,8 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('click', (e) => {
   sfx.unlock();
   if (app.book) {
-    app.bookPage = (app.bookPage + 1) % BOOK_PAGES;
+    const n = bookPagesFor(app.packId || app.game?.packId).length;
+    app.bookPage = (app.bookPage + 1) % n;
     if (app.bookPage === 0) app.book = false;
   } else if (app.screen === 'howto') app.screen = 'menu';
   else if (app.screen === 'controls') {
@@ -622,13 +666,15 @@ function render() {
     drawThermometers(ctx, game);
     for (const p of game.players) {
       const human = app.humans.find((h) => h.pid === p.id);
-      drawPanel(ctx, p, human ? human.keys.labels : null, view, app.time);
+      drawPanel(ctx, p, human ? human.keys.labels : null, view, app.time, app.game?.pack);
     }
     drawCountdown(ctx, game);
     if (game.phase === 'over' && app.overT >= RESULT_DELAY) drawResult(ctx, game);
     else if (app.paused && !app.book) drawPause(ctx);
   }
-  if (app.book) drawBook(ctx, app.bookPage);
+  if (app.book) {
+    drawBook(ctx, app.bookPage, app.game?.packId || app.bookPackId || 'chemistry');
+  }
   if (sfx.muted) text(ctx, 'SOUND OFF (M)', W / 2, H - 4, { size: 10, color: '#7f8da6', align: 'center' });
 }
 

@@ -1,5 +1,8 @@
 // Playable chemists. Each buffs one chemistry family and debuffs another.
 import { FAMILIES } from './families.js';
+import { PHYSICS_CHARACTERS } from './packs/physics/characters.js';
+
+export { PHYSICS_CHARACTERS };
 
 // Hidden identity used by tests / headless sims (no family mods).
 export const BASELINE = {
@@ -27,6 +30,7 @@ export const CHARACTERS = [
     skin: '#f3caa2',
     eyes: '#6bcf3a',
     coat: '#eef6e8',
+    pack: 'chemistry',
     buff: { families: ['acid'], damage: 1.25, duration: 1.25 },
     debuff: { families: ['base'], damage: 0.8, duration: 0.8, heal: 0.8, shield: 0.8 },
   },
@@ -40,6 +44,7 @@ export const CHARACTERS = [
     skin: '#f0c8a8',
     eyes: '#4c7dff',
     coat: '#e8eefc',
+    pack: 'chemistry',
     buff: { families: ['base'], damage: 1.25, duration: 1.25, heal: 1.15, shield: 1.15 },
     debuff: { families: ['acid'], damage: 0.8, duration: 0.8 },
   },
@@ -53,6 +58,7 @@ export const CHARACTERS = [
     skin: '#e8b896',
     eyes: '#c77dff',
     coat: '#e8e0f4',
+    pack: 'chemistry',
     buff: { families: ['toxin'], damage: 1.25, duration: 1.25 },
     debuff: { families: ['heal'], heal: 0.75 },
   },
@@ -66,6 +72,7 @@ export const CHARACTERS = [
     skin: '#f3caa2',
     eyes: '#ff9d2e',
     coat: '#fceee6',
+    pack: 'chemistry',
     buff: { families: ['oxidizer', 'organic'], damage: 1.2, duration: 1.15 },
     debuff: { families: ['aqueous'], damage: 0.8, duration: 0.8 },
   },
@@ -79,6 +86,7 @@ export const CHARACTERS = [
     skin: '#f6d5b8',
     eyes: '#a89070',
     coat: '#f4efe6',
+    pack: 'chemistry',
     buff: { families: ['polymer'], duration: 1.3, shield: 1.3 },
     debuff: { families: ['toxin'], damage: 0.8, duration: 0.8 },
   },
@@ -92,13 +100,17 @@ export const CHARACTERS = [
     skin: '#f3caa2',
     eyes: '#3d9a5f',
     coat: '#e8f8ee',
+    pack: 'chemistry',
     buff: { families: ['heal'], heal: 1.3 },
     debuff: { families: ['organic'], damage: 0.85 },
   },
 ];
 
+/** Chemistry + physics casts offered on character select. */
+export const SELECTABLE_CHARACTERS = [...CHARACTERS, ...PHYSICS_CHARACTERS];
+
 export const CHARACTER_BY_ID = Object.fromEntries(
-  [BASELINE, ...CHARACTERS].map((c) => [c.id, c]),
+  [BASELINE, ...SELECTABLE_CHARACTERS].map((c) => [c.id, c]),
 );
 export const DEFAULT_CHARACTER_ID = 'baseline';
 
@@ -114,12 +126,14 @@ export function familyLabel(id) {
   return FAMILIES[id]?.name || id;
 }
 
-// Bot character pick: prefer a character whose buffed families match desire.
-export function pickBotCharacter(rng, levelName = 'normal') {
+// Bot character pick from the active science pack's cast.
+export function pickBotCharacter(rng, levelName = 'normal', packId = 'chemistry') {
+  const pool = SELECTABLE_CHARACTERS.filter((c) => (c.pack || 'chemistry') === packId);
+  const list = pool.length ? pool : CHARACTERS;
   const bias = { easy: 0.5, normal: 1, hard: 1.4 }[levelName] || 1;
-  let best = CHARACTERS[0];
+  let best = list[0];
   let bestScore = -Infinity;
-  for (const c of CHARACTERS) {
+  for (const c of list) {
     const score = (c.buff.damage || 1) + (c.buff.heal || 1) + (c.buff.shield || 1) + rng.next() * (1.2 / bias);
     if (score > bestScore) {
       bestScore = score;

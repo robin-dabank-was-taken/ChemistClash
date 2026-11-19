@@ -62,7 +62,7 @@ export function emit(game, type, data) {
 
 // ---------------------------------------------------------------- players
 
-export function damage(game, p, amount, kind = 'hit') {
+export function damage(game, p, amount, kind = 'hit', opts = {}) {
   if (p.hp <= 0 || amount <= 0) return 0;
   let left = amount;
   if (p.shield > 0) {
@@ -79,6 +79,14 @@ export function damage(game, p, amount, kind = 'hit') {
   p.hp = Math.max(0, p.hp - left);
   p.hurtT = 0.25;
   emit(game, 'damage', { pid: p.id, amount: left, kind });
+  if (opts.from != null && !opts.skipLifeSteal) {
+    const attacker = game.players[opts.from];
+    if (attacker && attacker.lifeSteal > 0) {
+      const steal = Math.round(left * attacker.lifeSteal);
+      attacker.lifeSteal = 0;
+      if (steal > 0) heal(game, attacker, steal);
+    }
+  }
   return left;
 }
 
@@ -95,6 +103,7 @@ export function heal(game, p, amount) {
     amt = Math.round(amount * p.healAmp);
     p.healAmp = 0;
   }
+  if (p.healCut && p.healCut > 0) amt = Math.round(amt * 0.5);
   const before = p.hp;
   p.hp = Math.min(TUNE.maxHp, p.hp + amt);
   emit(game, 'heal', { pid: p.id, amount: p.hp - before });
@@ -148,7 +157,11 @@ export function breakWall(game, i) {
 // A tile has at most one surface (fire, wet, acid, frost) plus at most one gas.
 // Walls sit on top of surfaces and are separate from them.
 
-const isFlammable = (tile) => !!tile.gas && !!GASES[tile.gas.kind].flammable;
+const isFlammable = (tile, game) => {
+  if (!tile.gas) return false;
+  const gases = game?.pack?.gases || GASES;
+  return !!gases[tile.gas.kind]?.flammable;
+};
 
 function setSurf(tile, surf, dur) {
   tile.t = tile.surf === surf ? Math.max(tile.t, dur) : dur;
@@ -158,7 +171,7 @@ function setSurf(tile, surf, dur) {
 export function ignite(game, i, dur) {
   const tile = game.tiles[i];
   if (tile.wall) breakWall(game, i); // organic / oxide walls burn or crack in the heat
-  if (isFlammable(tile)) {
+  if (isFlammable(tile, game)) {
     explode(game, i);
     return;
   }
@@ -205,13 +218,35 @@ export function acidify(game, i, dur) {
 export function gasify(game, i, kind, dur) {
   const tile = game.tiles[i];
   tile.gas = { kind, t: dur };
-  if (tile.surf === 'fire' && GASES[kind].flammable) explode(game, i);
+  tile.glitch = null;
+  const gases = game.pack?.gases || GASES;
+  if (tile.surf === 'fire' && gases[kind]?.flammable) explode(game, i);
+}
+
+/** Physics zone: same combat knobs as gas, different presentation. */
+export function glitchify(game, i, kind, dur) {
+  const tile = game.tiles[i];
+  tile.glitch = { kind, t: dur };
+  tile.gas = null;
+  const table = game.pack?.glitches || {};
+  if (tile.surf === 'fire' && table[kind]?.unstable) explodeGlitch(game, i);
+  emit(game, 'glitch', { i, kind });
+}
+
+export function clearGlitches(game, side) {
+  for (const i of halfTiles(side)) {
+    if (game.tiles[i].glitch) {
+      game.tiles[i].glitch = null;
+      emit(game, 'glitch-clear', { i });
+    }
+  }
 }
 
 export function explode(game, i) {
   const tile = game.tiles[i];
-  if (!isFlammable(tile)) return;
-  const power = GASES[tile.gas.kind].boom;
+  if (!isFlammable(tile, game)) return;
+  const gases = game.pack?.gases || GASES;
+  const power = gases[tile.gas.kind]?.boom || 10;
   tile.gas = null;
   emit(game, 'explosion', { i, power });
   breakWall(game, i);
@@ -219,7 +254,24 @@ export function explode(game, i) {
   if (victim) damage(game, victim, power, 'blast');
   ignite(game, i, 1.5);
   // Neighbouring flammable gas goes up a beat later, so clouds chain visibly.
-  for (const n of neighbors(i)) if (isFlammable(game.tiles[n])) game.fuses.push({ i: n, t: 0.09 });
+  for (const n of neighbors(i)) if (isFlammable(game.tiles[n], game)) game.fuses.push({ i: n, t: 0.09 });
+}
+
+export function explodeGlitch(game, i) {
+  const tile = game.tiles[i];
+  const table = game.pack?.glitches || {};
+  if (!tile.glitch || !table[tile.glitch.kind]?.unstable) return;
+  const power = table[tile.glitch.kind].boom || 12;
+  tile.glitch = null;
+  emit(game, 'explosion', { i, power });
+  breakWall(game, i);
+  const victim = occupant(game, i);
+  if (victim) damage(game, victim, power, 'blast');
+  ignite(game, i, 1.2);
+  for (const n of neighbors(i)) {
+    const g = game.tiles[n].glitch;
+    if (g && table[g.kind]?.unstable) game.fuses.push({ i: n, t: 0.09, glitch: true });
+  }
 }
 
 // ---------------------------------------------------------------- attacks
@@ -231,10 +283,12 @@ export function addStrike(game, { owner, kind, tiles, delay, onTile, gas = null 
   emit(game, 'telegraph', { owner, kind, tiles });
 }
 
-// A projectile that flies along a row from its owner towards the other side.
-export function addBolt(game, p, { kind, dmg, speed, ignites = false, onHit = null }) {
+// A projectile that flies toward the other side. Optional `dy` steps the row
+// once per column crossed (diagonal bolts).
+export function addBolt(game, p, { kind, dmg, speed, ignites = false, onHit = null, dy = 0 }) {
   game.bolts.push({
-    owner: p.id, kind, dmg, speed, ignites, onHit,
+    owner: p.id, kind, dmg, speed, ignites, onHit, dy,
+    originCol: p.col, originRow: p.row,
     row: p.row, x: p.col, dir: p.side === 0 ? 1 : -1, age: 0, dead: false,
   });
   emit(game, 'bolt', { owner: p.id, kind });
@@ -251,8 +305,14 @@ export function stepBolt(game, b, dt) {
       b.dead = true;
       return;
     }
+    const steps = Math.abs(c - b.originCol);
+    b.row = b.originRow + (b.dy || 0) * steps;
+    if (b.row < 0 || b.row >= ROWS) {
+      b.dead = true;
+      return;
+    }
     const i = idx(c, b.row);
-    if (b.ignites && isFlammable(game.tiles[i])) explode(game, i);
+    if (b.ignites && isFlammable(game.tiles[i], game)) explode(game, i);
     if (game.tiles[i].wall) {
       emit(game, 'bolt-hit', { i, kind: b.kind });
       breakWall(game, i);
@@ -263,11 +323,57 @@ export function stepBolt(game, b, dt) {
     const victim = occupant(game, i);
     if (victim && victim.id !== b.owner) {
       emit(game, 'bolt-hit', { i, kind: b.kind });
-      damage(game, victim, b.dmg, b.kind);
+      damage(game, victim, b.dmg, b.kind, { from: b.owner, skipLifeSteal: !!b.skipLifeSteal });
       if (b.onHit) b.onHit(i, victim);
       b.dead = true;
       return;
     }
     c += b.dir;
   }
+}
+
+// Leap onto the foe half, run onLand, then snap back via game.dashes.
+export function leapStrike(game, p, { col, row = p.row, returnT = 0.28, onLand = null }) {
+  const startC = p.col;
+  const startR = p.row;
+  const foe = 1 - p.side;
+  const lo = foe * HALF;
+  const hi = lo + HALF - 1;
+  let landC = Math.max(lo, Math.min(hi, col));
+  let landR = Math.max(0, Math.min(ROWS - 1, row));
+
+  const free = (c, r) => inField(c, r) && sideOfCol(c) === foe && !game.tiles[idx(c, r)].wall;
+  if (!free(landC, landR)) {
+    let found = null;
+    for (let d = 0; d < HALF; d++) {
+      for (const c of [landC - d, landC + d]) {
+        if (c >= lo && c <= hi && free(c, landR)) {
+          found = c;
+          break;
+        }
+      }
+      if (found != null) break;
+    }
+    if (found == null) {
+      if (onLand) onLand(idx(landC, landR));
+      return false;
+    }
+    landC = found;
+  }
+
+  p.col = landC;
+  p.row = landR;
+  emit(game, 'move', { pid: p.id });
+  if (onLand) onLand(idx(landC, landR));
+  if (!game.dashes) game.dashes = [];
+  game.dashes.push({ pid: p.id, startC, startR, t: returnT });
+  return true;
+}
+
+export function washAcid(game, i) {
+  const tile = game.tiles[i];
+  if (tile.surf !== 'acid') return false;
+  tile.surf = null;
+  tile.t = 0;
+  return true;
 }

@@ -66,29 +66,30 @@ export function wrap(ctx, str, maxWidth) {
   return lines;
 }
 
-export function formula(ctx, parts, x, y, size, { align = 'left', color = null } = {}) {
+export function formula(ctx, parts, x, y, size, { align = 'left', color = null, tokens = ELEMENTS } = {}) {
   const big = font(size);
   const small = font(Math.round(size * 0.66));
   const segs = [];
   let width = 0;
   for (const [el, n] of parts) {
+    const glyph = tokens[el]?.glyph || el;
     ctx.font = big;
-    const sw = ctx.measureText(el).width;
+    const sw = ctx.measureText(glyph).width;
     let nw = 0;
     if (n > 1) {
       ctx.font = small;
       nw = ctx.measureText(String(n)).width + 1;
     }
-    segs.push({ el, n, sw, nw });
+    segs.push({ el, glyph, n, sw, nw });
     width += sw + nw;
   }
   let cx = align === 'center' ? x - width / 2 : align === 'right' ? x - width : x;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   for (const seg of segs) {
-    ctx.fillStyle = color || ELEMENTS[seg.el].text;
+    ctx.fillStyle = color || tokens[seg.el]?.text || ELEMENTS[seg.el]?.text || '#dbe6f7';
     ctx.font = big;
-    ctx.fillText(seg.el, cx, y);
+    ctx.fillText(seg.glyph, cx, y);
     cx += seg.sw;
     if (seg.n > 1) {
       ctx.font = small;
@@ -99,8 +100,12 @@ export function formula(ctx, parts, x, y, size, { align = 'left', color = null }
   return width;
 }
 
-export function elementTile(ctx, el, x, y, w, h, { dim = false } = {}) {
-  const e = ELEMENTS[el];
+export function elementTile(ctx, el, x, y, w, h, { dim = false, tokens = ELEMENTS } = {}) {
+  const e = tokens[el] || ELEMENTS[el] || {
+    color: '#56617a', ink: '#f4f7fb', z: '?', glyph: el,
+  };
+  const face = e.glyph || el;
+  const corner = e.z != null ? String(e.z) : '';
   ctx.save();
   if (dim) ctx.globalAlpha *= 0.35;
   // Drop shadow
@@ -116,13 +121,17 @@ export function elementTile(ctx, el, x, y, w, h, { dim = false } = {}) {
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  text(ctx, String(e.z), x + 5, y + 13, { size: 10, color: alpha(e.ink, 0.75) });
-  text(ctx, el, x + w / 2, y + h * 0.58, { size: Math.round(h * 0.42), color: e.ink, align: 'center', baseline: 'middle' });
+  if (corner && corner !== face) {
+    text(ctx, corner, x + 5, y + 13, { size: 10, color: alpha(e.ink, 0.75) });
+  }
+  text(ctx, String(face), x + w / 2, y + h * 0.58, {
+    size: Math.round(h * 0.36), color: e.ink, align: 'center', baseline: 'middle',
+  });
   ctx.restore();
 }
 
-export function atom(ctx, el, x, y, r, { dim = false } = {}) {
-  const e = ELEMENTS[el];
+export function atom(ctx, el, x, y, r, { dim = false, tokens = ELEMENTS } = {}) {
+  const e = tokens[el] || ELEMENTS[el] || { color: '#56617a' };
   const s = Math.max(6, Math.round(r * 2));
   ctx.save();
   if (dim) ctx.globalAlpha *= 0.3;

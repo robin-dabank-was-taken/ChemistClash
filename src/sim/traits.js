@@ -1,11 +1,24 @@
 // Apply a caster's character buffs/debuffs to damage, heals, shields, and durations.
-import { familyOf } from '../families.js';
+import { familyOf as chemFamilyOf } from '../families.js';
 import { getCharacter } from '../characters.js';
 
-const FAMILY_IDS = new Set(['acid', 'base', 'toxin', 'oxidizer', 'organic', 'aqueous', 'polymer', 'heal', 'nuke']);
+function familyOf(recipeOrId) {
+  if (recipeOrId && typeof recipeOrId === 'object' && recipeOrId.family) return recipeOrId.family;
+  return chemFamilyOf(recipeOrId);
+}
+
+const FAMILY_IDS = new Set([
+  // chemistry
+  'acid', 'base', 'toxin', 'oxidizer', 'organic', 'aqueous', 'polymer', 'heal', 'nuke',
+  // physics
+  'kinetic', 'em', 'quantum', 'thermal', 'nuclear', 'field', 'wave', 'barrier',
+]);
 
 function resolveFamily(familyOrRecipe) {
   if (typeof familyOrRecipe === 'string' && FAMILY_IDS.has(familyOrRecipe)) return familyOrRecipe;
+  if (familyOrRecipe && typeof familyOrRecipe === 'object' && familyOrRecipe.family) {
+    return familyOrRecipe.family;
+  }
   return familyOf(familyOrRecipe);
 }
 

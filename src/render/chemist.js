@@ -113,18 +113,23 @@ function drawStatusOverlay(ctx, p, time) {
 }
 
 function drawStateSprite(ctx, state, anim, walkSheet, poseSheet) {
+  // Idle uses the dedicated standing pose — never a walk-cycle frame.
+  if (state === 'idle' && poseSheet) {
+    drawSheetFrame(ctx, poseSheet, POSE.idle, POSE_FRAMES, DRAW_H);
+    return true;
+  }
   if (state === 'walk' && walkSheet) {
     const i = Math.min(3, Math.floor((anim?.phase || 0) * 4));
     drawSheetFrame(ctx, walkSheet, WALK_ORDER[i], WALK_FRAMES, DRAW_H);
     return true;
   }
-  if (state === 'idle' && walkSheet) {
-    drawSheetFrame(ctx, walkSheet, 1, WALK_FRAMES, DRAW_H);
-    return true;
-  }
   if (poseSheet && (state === 'cast' || state === 'hurt' || state === 'death')) {
     const pose = state === 'cast' ? POSE.cast : state === 'hurt' ? POSE.hurt : POSE.death;
     drawSheetFrame(ctx, poseSheet, pose, POSE_FRAMES, DRAW_H);
+    return true;
+  }
+  if (poseSheet) {
+    drawSheetFrame(ctx, poseSheet, POSE.idle, POSE_FRAMES, DRAW_H);
     return true;
   }
   if (walkSheet) {

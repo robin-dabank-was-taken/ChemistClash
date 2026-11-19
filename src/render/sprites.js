@@ -11,16 +11,26 @@ function load(map, id, path) {
   map.set(id, img);
 }
 
-// Resolve from this module so GitHub Pages (/ChemistClash/) and localhost both work.
-function characterAsset(id, file, version) {
-  return new URL(`../../assets/characters/${id}/${file}?v=${version}`, import.meta.url).href;
+function packFolder(pack) {
+  return pack === 'physics' ? 'physicists' : 'chemists';
 }
 
-export function preloadPortraits(ids) {
-  for (const id of ids) {
-    load(portraits, id, characterAsset(id, 'portrait.png', 'natural1'));
-    load(walks, id, characterAsset(id, 'walk.png', 'mz1'));
-    load(poses, id, characterAsset(id, 'poses.png', 'mz1'));
+// Resolve from this module so GitHub Pages (/ChemistClash/) and localhost both work.
+function characterAsset(id, pack, file, version) {
+  return new URL(
+    `../../assets/characters/${packFolder(pack)}/${id}/${file}?v=${version}`,
+    import.meta.url,
+  ).href;
+}
+
+/** Preload sheets for character objects `{ id, pack }`, or bare id strings (chemistry). */
+export function preloadPortraits(chars) {
+  for (const entry of chars) {
+    const id = typeof entry === 'string' ? entry : entry.id;
+    const pack = typeof entry === 'string' ? 'chemistry' : (entry.pack || 'chemistry');
+    load(portraits, id, characterAsset(id, pack, 'portrait.png', 'pack5'));
+    load(walks, id, characterAsset(id, pack, 'walk.png', 'pack5'));
+    load(poses, id, characterAsset(id, pack, 'poses.png', 'pack5'));
   }
 }
 
@@ -42,4 +52,3 @@ export function getPoseSheet(id) {
 }
 
 export const POSE = { idle: 0, cast: 1, hurt: 2, death: 3 };
-

@@ -19,13 +19,15 @@ export const ELEMENTS = {
 export const ELEMENT_ORDER = ['H', 'C', 'N', 'O', 'P', 'S', 'Cl'];
 
 // `dmg` is per hazard tick (every half second) while standing in the cloud.
+// Flammable gases are fuel only (dmg 0) — they hurt when lit.
 export const GASES = {
   cl2: { name: 'Chlorine', color: '#b9e34b', alpha: 0.5, dmg: 5 },
-  co: { name: 'Carbon monoxide', color: '#c9d4e6', alpha: 0.13, dmg: 4, flammable: true, boom: 10 },
-  h2s: { name: 'Hydrogen sulfide', color: '#d8c64a', alpha: 0.42, dmg: 3, flammable: true, boom: 12 },
-  ch4: { name: 'Methane', color: '#8fd0ff', alpha: 0.36, dmg: 0, flammable: true, boom: 22 },
+  co: { name: 'Carbon monoxide', color: '#c9d4e6', alpha: 0.13, dmg: 0, flammable: true, boom: 12 },
+  h2s: { name: 'Hydrogen sulfide', color: '#d8c64a', alpha: 0.42, dmg: 0, flammable: true, boom: 14 },
+  ch4: { name: 'Methane', color: '#8fd0ff', alpha: 0.36, dmg: 0, flammable: true, boom: 26 },
   n2o: { name: 'Nitrous oxide', color: '#f09be8', alpha: 0.42, dmg: 0, giddy: 2.5 },
-  // Kuro's basic-skill linger cloud (1 dmg per hazard tick).
+  no2: { name: 'Nitrogen dioxide', color: '#c45a2a', alpha: 0.45, dmg: 4 },
+  // Kuro's basic-skill linger cloud / CS₂ residue (1 dmg per hazard tick).
   miasma: { name: 'Toxin mist', color: '#b07dff', alpha: 0.4, dmg: 1 },
 };
 
@@ -77,7 +79,7 @@ function recipe(id, formula, chem, name, time, aim, tag, desc) {
   return { id, parts, counts, atoms, key: countsKey(counts), label: formulaLabel(parts), chem, name, time, aim, tag, desc, family: null };
 }
 
-export const TRUMP_ID = 'c30h48o3';
+export const TRUMP_ID = 'c20h30o5';
 export const NUKE_ID = TRUMP_ID;
 
 export const RECIPES = [
@@ -85,51 +87,65 @@ export const RECIPES = [
   recipe('h2', 'H2', 'Hydrogen', 'Squeaky Pop', 0, 'row', 'attack',
     'Fast bolt down your row. 6 dmg. Ignites any flammable gas it passes through.'),
   recipe('hcl', 'HCl', 'Hydrochloric acid', 'Acid Bolt', 0, 'row', 'attack',
-    'Bolt down your row. 12 dmg and leaves an acid puddle where it hits.'),
+    'Bolt down your row. 10 dmg and leaves an acid puddle where it hits.'),
+  recipe('hocl', 'HOCl', 'Hypochlorous acid', 'Bleach Dart', 0.4, 'mirror', 'attack',
+    'Sharp acid strike on the tile 4 ahead: 14 dmg and a puddle.'),
   recipe('h2o', 'H2O', 'Water', 'Water Jet', 0.5, 'row', 'attack',
     'Sweeps your whole row: 6 dmg and knockback. Douses fire, washes acid, leaves tiles wet.'),
   recipe('co2', 'CO2', 'Carbon dioxide', 'Dry Ice Blast', 0.5, 'mirror', 'attack',
     'Frosts the whole column 4 ahead: 8 dmg and chill. Freezes solid anyone standing in water.'),
   recipe('so2', 'SO2', 'Sulfur dioxide', 'Acid Rain', 0.5, 'field', 'attack',
-    "Acid rains on the enemy's tile and 4 random others: 8 dmg, puddles linger."),
-  recipe('hcn', 'HCN', 'Hydrogen cyanide', 'Cyanide Dart', 0.6, 'mirror', 'attack',
-    'Pinpoint strike on the single tile 4 ahead. 22 dmg.'),
-  recipe('n2h4', 'N2H4', 'Hydrazine', 'Rocket Fuel', 1.0, 'row', 'attack',
-    'Very fast rocket down your row: 20 dmg, sets its target alight and lights any gas on the way.'),
+    "Acid rains on the enemy's tile and 3 random others: 8 dmg, puddles linger."),
+  recipe('hcn', 'HCN', 'Hydrogen cyanide', 'Cyanide Leap', 0.6, 'mirror', 'attack',
+    'Leaps to the tile 4 ahead, deals 20 dmg, then snaps back.'),
+  recipe('n2h4', 'N2H4', 'Hydrazine', 'Rocket Leap', 1.0, 'mirror', 'attack',
+    'Leaps to the tile 4 ahead: 16 dmg, ignites the land tile, lights flammable gas on the path, then returns.'),
   recipe('hno3', 'HNO3', 'Nitric acid', 'Aqua Fortis', 1.0, 'mirror', 'attack',
-    'Acid down the whole column 4 ahead: 12 dmg and puddles.'),
+    'Acid down the whole column 4 ahead: 14 dmg and puddles.'),
   recipe('chcl3', 'CHCl3', 'Chloroform', 'Knockout Drops', 1.0, 'mirror', 'attack',
-    'Hits the single tile 4 ahead: 6 dmg and knocked out for 1.5 s (no moving, no mixing).'),
-  recipe('c2h2', 'C2H2', 'Acetylene', 'Acetylene Torch', 1.0, 'row', 'attack',
-    'Flame jet down your row: 16 dmg and sets the enemy row on fire.'),
+    'Hits the single tile 4 ahead: 6 dmg and knocked out for 2 s (no moving, no mixing).'),
+  recipe('c2h2', 'C2H2', 'Acetylene', 'Acetylene Fan', 1.0, 'row', 'attack',
+    'Three bolts (row + both diagonals): 10 dmg each, ignite on hit.'),
   recipe('ph3', 'PH3', 'Phosphine', "Will-o'-Wisp", 1.0, 'mirror', 'attack',
-    'Bursts into flame in a + shape, 4 ahead: 8 dmg, burns for 4 s.'),
+    'Leaps to the tile 4 ahead, bursts in a + of fire (10 dmg, 3 s burn), then returns.'),
+  recipe('ch5n', 'CH5N', 'Methylamine', 'Amine Spray', 0.8, 'row', 'attack',
+    'Twin diagonal base bolts: 8 dmg each. Washes acid puddles on hit.'),
+  recipe('cs2', 'CS2', 'Carbon disulfide', 'Carbon Mist', 0.8, 'row', 'attack',
+    'Twin diagonal toxin bolts: 7 dmg each. Leaves a short toxin mist on hit.'),
+  recipe('cocl', 'COCl2', 'Phosgene', 'Phosgene Payoff', 1.2, 'mirror', 'attack',
+    'Hits the tile 4 ahead: 12 dmg, +10 if that tile has toxin gas (clears it). Applies heal-cut for 4 s.'),
+  recipe('c5h5n', 'C5H5N', 'Pyridine', 'Pyridine Pulse', 1.2, 'mirror', 'attack',
+    'Base splash in a + shape, 4 ahead: 12 dmg and washes acid on those tiles.'),
   recipe('p4', 'P4', 'White phosphorus', 'White Phosphorus', 1.5, 'field', 'attack',
-    'Sets the ENTIRE enemy side ablaze: 8 dmg, burns for 3 s.'),
+    'Sets the ENTIRE enemy side ablaze: 6 dmg, burns for 2.5 s.'),
   recipe('c3h8', 'C3H8', 'Propane', 'Propane Blast', 2.0, 'mirror', 'attack',
-    'Explodes in a + shape, 4 ahead: 26 dmg and leaves fire.'),
+    'Explodes in a + shape, 4 ahead: 28 dmg and leaves fire.'),
   recipe('c6h6', 'C6H6', 'Benzene', 'Benzene Ring', 2.0, 'mirror', 'attack',
-    'Strikes the ring of 8 tiles AROUND the tile 4 ahead: 20 dmg. The middle is safe.'),
+    'Strikes the ring of 8 tiles AROUND the tile 4 ahead: 16 dmg. The middle is safe.'),
   recipe('h2so4', 'H2SO4', 'Sulfuric acid', 'Oil of Vitriol', 2.5, 'mirror', 'attack',
-    '3x3 acid splash, 4 ahead: 24 dmg (+10 on wet tiles) and deep puddles.'),
+    '3x3 acid splash, 4 ahead: 22 dmg (+12 on wet tiles) and deep puddles.'),
   recipe('c8h18', 'C8H18', 'Octane', 'Octane Wave', 3.0, 'row', 'attack',
-    'Wave of flame down your row and the rows beside it: 24 dmg, burns for 3 s.'),
+    'Wave of flame down your row and the rows beside it: 22 dmg, burns for 3 s.'),
   recipe('nh4no3', 'NH4NO3', 'Ammonium nitrate', 'Big Bang', 3.5, 'mirror', 'attack',
-    'Detonates a 3x3 area, 4 ahead: 45 dmg at the centre, 30 around it.'),
+    'Detonates a 3x3 area, 4 ahead: 40 dmg at the centre, 26 around it.'),
+  recipe('nh4oh', 'NH4OH', 'Ammonium hydroxide', 'Alkali Ripple', 1.2, 'mirror', 'attack',
+    'Lands on the tile 4 ahead, then a dodgeable alkali ring ripples out. 10 dmg per ring; washes acid.'),
 
   // ---- gas clouds
-  recipe('co', 'CO', 'Carbon monoxide', 'Silent Killer', 0, 'mirror', 'zone',
-    'Nearly invisible toxic gas, 3 tiles tall, 4 tiles ahead. Flammable.'),
+  recipe('co', 'CO', 'Carbon monoxide', 'Silent Fuel', 0, 'mirror', 'zone',
+    'Nearly invisible flammable cloud, 3 tiles tall, 4 ahead. Harmless until lit. Lingers 10 s.'),
   recipe('cl2', 'Cl2', 'Chlorine', 'Chlorine Cloud', 0, 'mirror', 'zone',
     'Choking toxic cloud in a + shape, 4 tiles ahead. Lingers 5 s.'),
-  recipe('h2s', 'H2S', 'Hydrogen sulfide', 'Rotten Egg', 0.5, 'mirror', 'zone',
-    'Toxic, flammable stink cloud 3 tiles wide, 4 tiles ahead.'),
+  recipe('h2s', 'H2S', 'Hydrogen sulfide', 'Rotten Fuel', 0.5, 'mirror', 'zone',
+    'Flammable stink cloud 3 tiles wide, 4 ahead. Harmless until lit. Lingers 10 s.'),
   recipe('n2o', 'N2O', 'Nitrous oxide', 'Laughing Gas', 0.5, 'mirror', 'zone',
     'Cloud in a + shape, 4 ahead. Anyone inside turns giddy: their movement is reversed.'),
+  recipe('no2', 'NO2', 'Nitrogen dioxide', 'NOx Field', 1.0, 'mirror', 'zone',
+    'Persistent 2x2 toxic field, 4 ahead. Non-flammable DoT. Lingers 6 s.'),
   recipe('ch4', 'CH4', 'Methane', 'Methane Leak', 1.5, 'mirror', 'zone',
-    'Big 3x3 flammable cloud, 4 ahead. Harmless until something lights it: 22 dmg.'),
+    'Big 3x3 flammable cloud, 4 ahead. Harmless until lit: 26 dmg. Lingers 12 s.'),
 
-  // ---- walls (solid barriers on the enemy side; fire, acid, bolts and blasts break them)
+  // ---- walls
   recipe('c2h3cl', 'C2H3Cl', 'Vinyl chloride', 'PVC Wall', 1.0, 'mirror', 'wall',
     'Polymerises into a PVC wall down the whole column 4 ahead. Blocks movement for 8 s. Fire, acid and bolts break it.'),
   recipe('p2o5', 'P2O5', 'Phosphorus pentoxide', 'Oxide Crust', 1.5, 'mirror', 'wall',
@@ -139,25 +155,25 @@ export const RECIPES = [
   recipe('c6h10o5', 'C6H10O5', 'Cellulose', 'Fiber Barricade', 2.0, 'row', 'wall',
     "Weaves a fiber wall across the enemy's half of your row. Blocks movement for 9 s."),
 
-  // ---- shields (a new shield replaces a weaker one; they do not add up)
+  // ---- shields
   recipe('o3', 'O3', 'Ozone', 'Ozone Shield', 0.5, 'self', 'shield',
-    'Shield: absorbs 20 damage. Lasts 6 s.'),
+    'Shield: absorbs 18 damage. Lasts 5 s.'),
   recipe('c2h4', 'C2H4', 'Ethylene', 'Plastic Shield', 1.0, 'self', 'shield',
-    'Polymerises into a polyethylene shield: absorbs 25 damage. Lasts 8 s.'),
+    'Polymerises into a polyethylene shield: absorbs 26 damage. Lasts 8 s.'),
   recipe('h3po4', 'H3PO4', 'Phosphoric acid', 'Phosphate Coat', 1.5, 'self', 'shield',
-    'Protective phosphate coating: absorbs 35 damage. Lasts 10 s.'),
+    'Protective phosphate coating: absorbs 34 damage. Lasts 10 s.'),
   recipe('c14h10n2o2', 'C14H10N2O2', 'Kevlar', 'Kevlar Vest', 3.0, 'self', 'shield',
-    'Body armour: absorbs 60 damage. Lasts 15 s.'),
+    'Body armour: absorbs 55 damage. Lasts 14 s.'),
 
   // ---- heals
   recipe('h2o2', 'H2O2', 'Hydrogen peroxide', 'Antiseptic', 1.0, 'self', 'heal',
-    'Heal 22.'),
+    'Heal 20.'),
   recipe('c2h6o', 'C2H6O', 'Ethanol', 'Rubbing Alcohol', 1.5, 'self', 'heal',
-    'Heal 16. Made entirely from common atoms.'),
+    'Heal 18. Made entirely from common atoms.'),
   recipe('c9h8o4', 'C9H8O4', 'Aspirin', 'Aspirin', 2.5, 'self', 'heal',
-    'Heal 35 and clear giddy, chill, freeze and knockout.'),
+    'Heal 32 and clear giddy, chill, freeze and knockout.'),
   recipe('c6h12o6', 'C6H12O6', 'Glucose', 'Sugar Rush', 3.0, 'self', 'heal',
-    'Heal 45, plus haste for 4 s.'),
+    'Heal 40, plus haste for 4 s.'),
 
   // ---- support
   recipe('o2', 'O2', 'Oxygen', 'Fresh Air', 0, 'field', 'support',
@@ -166,12 +182,12 @@ export const RECIPES = [
     'Smothers every fire and sweeps every gas cloud off your side.'),
   recipe('nh3', 'NH3', 'Ammonia', 'Smelling Salts', 1.0, 'self', 'support',
     'Clears giddy, chill, freeze and knockout. Haste for 5 s: quicker steps, faster reactions.'),
-  recipe('nh4oh', 'NH4OH', 'Ammonium hydroxide', 'Alkali Ripple', 1.2, 'mirror', 'attack',
-    'Lands on the tile 4 ahead, then a dodgeable alkali ring ripples out across the whole enemy half. 12 dmg per ring.'),
+  recipe('ch5no3', 'CH5NO3', 'Ammonium bicarbonate', 'Bicarb Rinse', 1.2, 'self', 'support',
+    'Cleanse, wash every acid puddle on your half, and haste for 3 s.'),
 
-  // ---- OA nuke (own type — not an attack / organic)
-  recipe(TRUMP_ID, 'C30H48O3', 'Oleanolic acid', 'OA Nuke', 5.0, 'field', 'nuke',
-    'Strikes the ENTIRE enemy side, all 16 tiles: 80 dmg. Takes 81 atoms, so brew it in one pot while you fight with the other.'),
+  // ---- Andrographolide nuke
+  recipe(TRUMP_ID, 'C20H30O5', 'Andrographolide', 'Andro Nuke', 5.0, 'field', 'nuke',
+    'Strikes the ENTIRE enemy side, all 16 tiles: 80 dmg. Takes 55 atoms — brew it in one pot while you fight with the other.'),
 ];
 
 const BY_KEY = new Map(RECIPES.map((r) => [r.key, r]));

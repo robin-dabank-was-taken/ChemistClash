@@ -6,6 +6,38 @@ import { makeRng } from './rng.js';
 import { act } from './game.js';
 import { TUNE, idx, inField, sideOfCol, halfTiles } from './world.js';
 
+function packAPI(game) {
+  const pack = game?.pack;
+  if (!pack || pack.id === 'chemistry') {
+    return {
+      recipes: RECIPES, trumpId: TRUMP_ID, gases: GASES,
+      countAtoms, findRecipe, missingFor, familyOf,
+      scarcity: SCARCITY, projects: PROJECTS, desire: BASE_DESIRE,
+    };
+  }
+  const desire = Object.fromEntries(pack.recipes.map((r) => [r.id, 1 + r.atoms * 0.15]));
+  // Prefer leap / diagonal / payoff tools the way chem weights signature attacks.
+  Object.assign(desire, {
+    momentum: 2.2, tunnel: 2.4, fission: 2.5, lorentz: 1.9, photocannon: 2.0,
+    decohere: 2.6, cascade: 3.0, annihilation: 3.2, entropy: 2.6, neutronjet: 3.0,
+    staticfield: 2.0, chargecorrupt: 2.0, blackbodytear: 1.6, neutronscramble: 1.7,
+    probglitch: 1.6, [pack.trumpId]: 4,
+  });
+  return {
+    recipes: pack.recipes,
+    trumpId: pack.trumpId,
+    gases: pack.gases || {},
+    glitches: pack.glitches || {},
+    countAtoms: pack.countAtoms,
+    findRecipe: pack.findRecipe,
+    missingFor: pack.missingFor,
+    familyOf: pack.familyOf,
+    scarcity: Object.fromEntries(pack.tokenOrder.map((t, i) => [t, 0.3 + i * 0.15])),
+    projects: pack.recipes.filter((r) => r.atoms >= 8),
+    desire,
+  };
+}
+
 // think/move: seconds between decisions. notice: how long an incoming attack
 // has to be on the board before the bot reacts to it. lapse: chance it never
 // spots a given attack at all. hold: how long it will sit on a finished mix
@@ -22,13 +54,14 @@ const LEVELS = {
 
 // How much the bot likes each recipe before looking at the board.
 const BASE_DESIRE = {
-  h2: 1.0, hcl: 1.6, h2o: 1.2, co2: 1.6, so2: 1.8, hcn: 2.4, n2h4: 2.3, hno3: 2.0, chcl3: 2.4, c2h2: 2.0, ph3: 1.8,
+  h2: 1.0, hcl: 1.6, hocl: 1.9, h2o: 1.2, co2: 1.6, so2: 1.8, hcn: 2.4, n2h4: 2.3, hno3: 2.0, chcl3: 2.4,
+  c2h2: 2.0, ph3: 1.8, ch5n: 1.7, cs2: 1.8, cocl: 2.6, c5h5n: 2.0, nh4oh: 2.1,
   p4: 2.6, c3h8: 3.0, c6h6: 3.0, h2so4: 2.8, c8h18: 3.4, nh4no3: 3.2,
-  co: 1.4, cl2: 2.2, h2s: 1.5, n2o: 1.6, ch4: 1.6,
+  co: 1.4, cl2: 2.2, h2s: 1.5, n2o: 1.6, no2: 2.0, ch4: 1.6,
   c2h3cl: 1.8, p2o5: 2.0, c10h8: 2.2, c6h10o5: 2.0,
   o3: 0.9, c2h4: 0.9, h3po4: 0.9, c14h10n2o2: 1.2,
   h2o2: 0.3, c2h6o: 0.2, c9h8o4: 0.2, c6h12o6: 0.2,
-  o2: 0.4, n2: 0.1, nh3: 0.8,
+  o2: 0.4, n2: 0.1, nh3: 0.8, ch5no3: 1.0,
   [TRUMP_ID]: 4,
 };
 // How painful it is to wait for an atom that is not in the hotbar yet.
@@ -62,6 +95,7 @@ export function botStep(game, bot, dt) {
   if (game.phase !== 'playing') return;
   const p = game.players[bot.pid];
   if (p.hp <= 0) return;
+  bot.api = packAPI(game);
   const jitter = () => 0.8 + 0.4 * bot.rng.next();
   bot.wanderT -= dt;
   bot.thinkT -= dt;
@@ -85,29 +119,36 @@ function situation(game, p) {
   const s = {
     foe,
     hpFrac: p.hp / TUNE.maxHp,
-    ownFire: 0, ownGas: 0, foeFire: 0, foeFlammable: 0,
+    ownFire: 0, ownGas: 0, foeFire: 0, foeFlammable: 0, foeGas: 0, foeGlitch: 0,
     onFire: game.tiles[idx(p.col, p.row)].surf === 'fire',
     foeWet: game.tiles[idx(foe.col, foe.row)].surf === 'wet',
     foeBrewing: brewing.some((r) => r.time >= 1),
-    foeTrump: brewing.some((r) => r.id === TRUMP_ID),
+    foeTrump: brewing.some((r) => r.id === (game.pack?.trumpId || TRUMP_ID)),
     debuffed: p.giddy > 0 || p.chill > 0 || p.frozen > 0,
   };
+  const api = packAPI(game);
+  s._desire = api.desire;
+  s._familyOf = api.familyOf;
+  const gases = api.gases || GASES;
   for (const i of halfTiles(p.side)) {
     if (game.tiles[i].surf === 'fire') s.ownFire++;
-    if (game.tiles[i].gas) s.ownGas++;
+    if (game.tiles[i].gas || game.tiles[i].glitch) s.ownGas++;
   }
   for (const i of halfTiles(foe.side)) {
     const tile = game.tiles[i];
     if (tile.surf === 'fire') s.foeFire++;
-    if (tile.gas && GASES[tile.gas.kind].flammable) s.foeFlammable++;
+    if (tile.gas) s.foeGas++;
+    if (tile.glitch) s.foeGlitch++;
+    if (tile.gas && gases[tile.gas.kind]?.flammable) s.foeFlammable++;
+    if (tile.glitch && api.glitches?.[tile.glitch.kind]?.unstable) s.foeFlammable++;
   }
   return s;
 }
 
 function desire(r, s, p) {
-  let d = BASE_DESIRE[r.id];
+  let d = (s._desire && s._desire[r.id]) ?? BASE_DESIRE[r.id] ?? (1 + r.atoms * 0.12);
   const hurt = 1 - s.hpFrac;
-  const fam = familyOf(r) || r.family;
+  const fam = (s._familyOf ? s._familyOf(r) : familyOf(r)) || r.family;
   const c = p?.character;
   if (c?.buff?.families?.includes(fam)) d *= 1.35;
   if (c?.debuff?.families?.includes(fam)) d *= 0.7;
@@ -123,9 +164,15 @@ function desire(r, s, p) {
     case 'c2h2': case 'n2h4': d += s.foeFlammable ? 1.5 : 0; break;
     case 'ph3': d += s.foeFlammable ? 1 : 0; break;
     case 'ch4': case 'h2s': case 'co': d += s.foeFire ? 0.6 : 0; break;
-    case 'nh3': d += s.debuffed ? 1.5 : 0; break;
+    case 'nh3': case 'ch5no3': d += s.debuffed ? 1.5 : 0; break;
     case 'co2': d += s.foeWet ? 1 : 0; break;
     case 'h2so4': d += s.foeWet ? 0.5 : 0; break;
+    case 'cocl': d += s.foeGas ? 1.2 : 0; break;
+    case 'cl2': case 'no2': case 'cs2': d += 0.3; break;
+    case 'decohere': d += s.foeGlitch ? 1.2 : 0; break;
+    case 'blackbodytear': case 'neutronscramble': d += s.foeFire ? 0.6 : 0; break;
+    case 'inertframe': d += Math.min(3, (s.ownFire + s.ownGas) * 0.6); break;
+    case 'plasma': case 'photocannon': d += s.foeFlammable ? 1.5 : 0; break;
     default:
   }
   return d;
@@ -136,20 +183,28 @@ const aligned = (p, foe, r) => p.row === foe.row && (r.aim === 'row' || lane(p.c
 
 // ---------------------------------------------------------------- mixing
 
-const hand = (p) => countAtoms(p.hotbar.map((slot) => slot.el));
-const finished = (bot, p, k) => !!bot.goals[k] && findRecipe(p.pots[k].atoms) === bot.goals[k];
+const hand = (p, api) => (api || { countAtoms }).countAtoms(p.hotbar.map((slot) => slot.el));
+const finished = (bot, p, k) => {
+  const api = bot.api || { findRecipe };
+  return !!bot.goals[k] && api.findRecipe(p.pots[k].atoms) === bot.goals[k];
+};
 
 // What pot k still needs for its goal ({} when it has no goal or is busy).
 function needs(bot, p, k) {
   const pot = p.pots[k];
   const goal = bot.goals[k];
   if (!goal || pot.state !== 'idle') return {};
-  return missingFor(goal, countAtoms(pot.atoms)) || {};
+  const api = bot.api || { missingFor, countAtoms };
+  return api.missingFor(goal, api.countAtoms(pot.atoms)) || {};
 }
 
 function chooseGoal(bot, p, k, s, mustUseHand = false) {
-  const have = countAtoms(p.pots[k].atoms);
-  const free = hand(p);
+  const api = bot.api || {
+    recipes: RECIPES, countAtoms, missingFor, scarcity: SCARCITY,
+    projects: PROJECTS, trumpId: TRUMP_ID,
+  };
+  const have = api.countAtoms(p.pots[k].atoms);
+  const free = hand(p, api);
   const otherGoal = bot.goals[1 - k];
   // Atoms the other pot is waiting for are spoken for - unless that pot is a
   // project, which only gets what the quick pot has no use for.
@@ -159,16 +214,16 @@ function chooseGoal(bot, p, k, s, mustUseHand = false) {
   }
   let best = null;
   let bestScore = -Infinity;
-  for (const r of RECIPES) {
+  for (const r of api.recipes) {
     if (r === otherGoal) continue;
-    const miss = missingFor(r, have);
+    const miss = api.missingFor(r, have);
     if (!miss) continue;
     let inHand = 0;
     let waitCost = 0;
     for (const el in miss) {
       const got = Math.min(miss[el], free[el] || 0);
       inHand += got;
-      waitCost += (miss[el] - got) * SCARCITY[el];
+      waitCost += (miss[el] - got) * (api.scarcity[el] || 1);
     }
     if (mustUseHand && inHand === 0) continue;
     const score = desire(r, s, p) + 0.5 * inHand - waitCost - 0.12 * sum(miss) + bot.rng.next() * bot.level.noise;
@@ -183,16 +238,18 @@ function chooseGoal(bot, p, k, s, mustUseHand = false) {
 // A big recipe for the slow pot to collect over time, or null to keep it quick.
 function chooseProject(bot, s) {
   if (bot.rng.next() >= bot.level.project) return null;
+  const api = bot.api || { projects: PROJECTS, trumpId: TRUMP_ID };
+  const projects = api.projects;
   const hurt = 1 - s.hpFrac;
   const weight = (r) => {
-    if (r.id === TRUMP_ID) return bot.level.trump;
+    if (r.id === api.trumpId) return bot.level.trump;
     if (r.tag === 'heal') return hurt * 4;
     if (r.tag === 'shield') return 1.5;
     if (r.tag === 'wall') return 2.2;
     return r.atoms > 20 ? 2 : 3;
   };
-  let roll = bot.rng.next() * PROJECTS.reduce((total, r) => total + weight(r), 0);
-  for (const r of PROJECTS) {
+  let roll = bot.rng.next() * projects.reduce((total, r) => total + weight(r), 0);
+  for (const r of projects) {
     roll -= weight(r);
     if (roll <= 0 && weight(r) > 0) return r;
   }
@@ -262,7 +319,7 @@ function think(game, bot, p, period) {
     const pot = p.pots[k];
     if (pot.state !== 'idle') continue;
     const goal = bot.goals[k];
-    if (goal && missingFor(goal, countAtoms(pot.atoms))) continue;
+    if (goal && (bot.api || { missingFor, countAtoms }).missingFor(goal, (bot.api || { countAtoms }).countAtoms(pot.atoms))) continue;
     if (k === SLOW) {
       const project = pot.atoms.length ? null : chooseProject(bot, s);
       bot.project = !!project;

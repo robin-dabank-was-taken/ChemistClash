@@ -1,6 +1,5 @@
 // Snapshot / hydrate for authoritative net play. Display clients never call
 // step/act; they only paint what the host sends.
-import { RECIPE_BY_ID } from '../data.js';
 import { createGame } from './game.js';
 import { attachCharacter } from './traits.js';
 
@@ -9,6 +8,7 @@ function snapTile(t) {
     surf: t.surf,
     t: t.t,
     gas: t.gas ? { kind: t.gas.kind, t: t.gas.t } : null,
+    glitch: t.glitch ? { kind: t.glitch.kind, t: t.glitch.t } : null,
     wall: t.wall ? { t: t.wall.t } : null,
   };
 }
@@ -43,6 +43,8 @@ function snapPlayer(p) {
     stun: p.stun,
     skillCd: p.skillCd || 0,
     healAmp: p.healAmp || 0,
+    lifeSteal: p.lifeSteal || 0,
+    healCut: p.healCut || 0,
     boltCd: p.boltCd || 0,
     characterId: p.characterId,
   };
@@ -66,6 +68,7 @@ function snapStrike(s) {
 export function snapshotGame(game) {
   return {
     rng: game.rng.getState(),
+    packId: game.packId || 'chemistry',
     time: game.time,
     phase: game.phase,
     countdown: game.countdown,
@@ -74,7 +77,7 @@ export function snapshotGame(game) {
     players: game.players.map(snapPlayer),
     bolts: game.bolts.map(snapBolt),
     strikes: game.strikes.map(snapStrike),
-    fuses: game.fuses.map((f) => ({ i: f.i, t: f.t })),
+    fuses: game.fuses.map((f) => ({ i: f.i, t: f.t, glitch: !!f.glitch })),
     dashes: (game.dashes || []).map((d) => ({
       pid: d.pid, startC: d.startC, startR: d.startR, t: d.t,
     })),
@@ -86,8 +89,10 @@ export function hydrateGame(snap, into = null) {
     seed: snap.rng,
     names: snap.players.map((p) => p.name),
     characters: snap.players.map((p) => p.characterId),
+    packId: snap.packId || 'chemistry',
   });
   game.rng.setState(snap.rng);
+  game.packId = snap.packId || game.packId;
   game.time = snap.time;
   game.phase = snap.phase;
   game.countdown = snap.countdown;
@@ -96,6 +101,7 @@ export function hydrateGame(snap, into = null) {
     surf: t.surf,
     t: t.t,
     gas: t.gas ? { kind: t.gas.kind, t: t.gas.t } : null,
+    glitch: t.glitch ? { kind: t.glitch.kind, t: t.glitch.t } : null,
     wall: t.wall ? { t: t.wall.t } : null,
   }));
   game.players = snap.players.map((sp) => {
@@ -114,7 +120,7 @@ export function hydrateGame(snap, into = null) {
       pots: sp.pots.map((pot) => ({
         atoms: pot.atoms.slice(),
         state: pot.state,
-        recipe: pot.recipe ? RECIPE_BY_ID[pot.recipe] || null : null,
+        recipe: pot.recipe ? (game.pack.RECIPE_BY_ID[pot.recipe] || null) : null,
         t: pot.t,
         total: pot.total,
       })),
@@ -128,6 +134,8 @@ export function hydrateGame(snap, into = null) {
       stun: sp.stun,
       skillCd: sp.skillCd || 0,
       healAmp: sp.healAmp || 0,
+      lifeSteal: sp.lifeSteal || 0,
+      healCut: sp.healCut || 0,
       boltCd: sp.boltCd || 0,
     };
     attachCharacter(p, sp.characterId);
@@ -135,7 +143,7 @@ export function hydrateGame(snap, into = null) {
   });
   game.bolts = snap.bolts.map((b) => ({ ...b, onHit: null }));
   game.strikes = snap.strikes.map((s) => ({ ...s, tiles: s.tiles.slice(), onTile: () => {} }));
-  game.fuses = snap.fuses.map((f) => ({ i: f.i, t: f.t }));
+  game.fuses = snap.fuses.map((f) => ({ i: f.i, t: f.t, glitch: !!f.glitch }));
   game.dashes = (snap.dashes || []).map((d) => ({
     pid: d.pid, startC: d.startC, startR: d.startR, t: d.t,
   }));

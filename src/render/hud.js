@@ -1,6 +1,6 @@
 // Everything around the board: health bars, lab thermometers, and each
 // player's panel (two pots, recipe hints, hotbar). Retro-pixel HUD.
-import { findRecipe, countAtoms, hillParts } from '../data.js';
+import { getPack, DEFAULT_PACK_ID } from '../packs/index.js';
 import { TUNE, reactionRate } from '../sim/world.js';
 import { suggest, hasFuture } from '../hints.js';
 import { W, FIELD_X, FIELD_Y, FIELD_BOTTOM, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, PLAYER_COLORS } from './layout.js';
@@ -52,6 +52,9 @@ export function drawTopBar(ctx, game, view) {
     if (p.frozen > 0) chips.push(['FROZEN', '#ffffff']);
     else if (p.chill > 0) chips.push(['CHILL', '#a8dcff']);
     if (p.giddy > 0) chips.push(['GIDDY', '#f6a5ef']);
+    if (p.lifeSteal > 0) chips.push(['LIFESTEAL', '#ff8a3c']);
+    if (p.healCut > 0) chips.push(['HEAL CUT', '#d49bff']);
+    if (p.healAmp > 1) chips.push(['HEAL ×2', '#7dffa0']);
     let cx = right ? x + BAR_W : x;
     for (const [label, chipColor] of chips) {
       ctx.font = font(10);
@@ -108,7 +111,8 @@ export function drawThermometers(ctx, game) {
   }
 }
 
-export function drawPanel(ctx, p, keys, view, time) {
+export function drawPanel(ctx, p, keys, view, time, pack = null) {
+  const activePack = pack || getPack(DEFAULT_PACK_ID);
   const x = PANEL_X[p.id];
   const y = PANEL_Y;
   const color = PLAYER_COLORS[p.id];
@@ -116,11 +120,16 @@ export function drawPanel(ctx, p, keys, view, time) {
     fill: 'rgba(10,14,22,0.94)', edge: alpha(color, 0.55), lit: alpha(color, 0.35),
   });
 
-  for (let k = 0; k < 2; k++) drawPot(ctx, p, k, x + 12 + k * 138, y + 10, keys, view.potPulse[p.id][k], time);
-  drawHints(ctx, p, x + 294, y + 10, PANEL_W - 306);
-  drawHotbar(ctx, p, x + 12, y + 160, keys);
+  for (let k = 0; k < 2; k++) {
+    drawPot(ctx, p, k, x + 12 + k * 138, y + 10, keys, view.potPulse[p.id][k], time, activePack);
+  }
+  drawHints(ctx, p, x + 294, y + 10, PANEL_W - 306, activePack);
+  drawHotbar(ctx, p, x + 12, y + 160, keys, activePack);
 
   const lx = x + 396;
+  const packTag = activePack.id === 'physics' ? 'PHYSICS · QUANTA' : 'CHEMISTRY · ATOMS';
+  const packColor = activePack.id === 'physics' ? '#9ad0ff' : '#9be33c';
+  text(ctx, packTag, lx, y + 148, { size: 10, color: packColor, baseline: 'middle' });
   if (keys) {
     const skillCd = p.skillCd || 0;
     if (skillCd > 0) {
@@ -139,13 +148,14 @@ const POT_H = 140;
 const ATOM_SPOTS = [[-24, 84], [0, 84], [24, 84], [-24, 65], [0, 65], [24, 65], [-24, 46], [0, 46], [24, 46]];
 const MAX_LOOSE = ATOM_SPOTS.length;
 
-function drawPot(ctx, p, k, x, y, keys, pulse, time) {
+function drawPot(ctx, p, k, x, y, keys, pulse, time, pack) {
   const pot = p.pots[k];
   const color = PLAYER_COLORS[p.id];
   const active = p.activePot === k;
   const reacting = pot.state === 'reacting';
-  const ready = !reacting && pot.atoms.length ? findRecipe(pot.atoms) : null;
+  const ready = !reacting && pot.atoms.length ? pack.findRecipe(pot.atoms) : null;
   const cx = x + POT_W / 2;
+  const tokens = pack.tokens;
 
   pxPanel(ctx, x, y, POT_W, POT_H, {
     fill: active ? alpha(color, 0.12) : '#0c121c',
@@ -191,26 +201,26 @@ function drawPot(ctx, p, k, x, y, keys, pulse, time) {
   }
 
   const loose = pot.atoms.length <= MAX_LOOSE;
-  const groups = loose ? [] : hillParts(countAtoms(pot.atoms));
+  const groups = loose ? [] : pack.hillParts(pack.countAtoms(pot.atoms));
   const wobble = (n) => (reacting ? Math.sin(time * 16 + n * 2) * 2 : 0);
   const last = pot.atoms.length - 1;
   if (loose) {
     pot.atoms.forEach((el, n) => {
       const [dx, dy] = ATOM_SPOTS[n];
-      atom(ctx, el, cx + dx + wobble(n), y + dy - (n === last ? pulse * 5 : 0), 9);
+      atom(ctx, el, cx + dx + wobble(n), y + dy - (n === last ? pulse * 5 : 0), 9, { tokens });
     });
   } else {
     groups.forEach(([el, count], n) => {
       const ax = cx - 28 + (n % 2) * 37 + wobble(n);
       const ay = y + 85 - Math.floor(n / 2) * 16 - (el === pot.atoms[last] ? pulse * 4 : 0);
-      atom(ctx, el, ax, ay, 7);
+      atom(ctx, el, ax, ay, 7, { tokens });
       text(ctx, String(count), ax + 10, ay + 0.5, { size: 10, color: '#ffffff', baseline: 'middle' });
     });
   }
 
   const recipe = reacting ? pot.recipe : ready;
   if (pot.atoms.length) {
-    const parts = recipe ? recipe.parts : hillParts(countAtoms(pot.atoms));
+    const parts = recipe ? recipe.parts : pack.hillParts(pack.countAtoms(pot.atoms));
     const chars = parts.reduce((n, [el, count]) => n + el.length + (count > 1 ? String(count).length : 0), 0);
     formula(ctx, parts, cx, y + 116, Math.max(8, Math.min(14, Math.floor(200 / chars))), { align: 'center' });
   }
@@ -228,23 +238,23 @@ function drawPot(ctx, p, k, x, y, keys, pulse, time) {
     label = ready.name;
     labelColor = '#ffffff';
   } else if (pot.atoms.length) {
-    const alive = hasFuture(pot.atoms);
+    const alive = hasFuture(pot.atoms, pack);
     label = alive ? 'mixing…' : 'will fizzle';
     labelColor = alive ? DIM : '#ff7b8a';
   }
   text(ctx, label, cx, y + 130, { size: 10, color: labelColor, align: 'center' });
 }
 
-function drawHints(ctx, p, x, y, w) {
+function drawHints(ctx, p, x, y, w, pack) {
   const pot = p.pots[p.activePot];
   text(ctx, `POT ${'AB'[p.activePot]} CAN BECOME`, x, y + 12, { size: 9, color: DIM });
   if (pot.state === 'reacting') {
     text(ctx, 'Reacting. Switch pots to keep mixing.', x, y + 34, { size: 10, color: DIM, weight: 400 });
     return;
   }
-  const list = suggest(p);
+  const list = suggest(p, p.activePot, 6, pack);
   if (!list.length) {
-    const done = pot.atoms.length && findRecipe(pot.atoms);
+    const done = pot.atoms.length && pack.findRecipe(pot.atoms);
     text(ctx, done ? 'Complete. Confirm to react!' : 'Nothing. Empty the pot.', x, y + 34, { size: 10, color: DIM, weight: 400 });
     return;
   }
@@ -269,16 +279,16 @@ function drawHints(ctx, p, x, y, w) {
         text(ctx, String(need.n), nx, ly, { size: 9, color: have ? INK : DIM, align: 'right' });
         nx -= need.n > 9 ? 12 : 8;
       }
-      atom(ctx, need.el, nx - 7, ly - 4, 6.5, { dim: !have });
+      atom(ctx, need.el, nx - 7, ly - 4, 6.5, { dim: !have, tokens: pack.tokens });
       nx -= 18;
     }
   });
 }
 
-function drawHotbar(ctx, p, x, y, keys) {
+function drawHotbar(ctx, p, x, y, keys, pack) {
   p.hotbar.forEach((slot, i) => {
     const sx = x + i * 74;
-    elementTile(ctx, slot.el, sx, y, 66, 52);
+    elementTile(ctx, slot.el, sx, y, 66, 52, { tokens: pack.tokens });
     if (keys) keycap(ctx, keys.slots[i], sx + 22, y + 58, 22, 15);
   });
 }

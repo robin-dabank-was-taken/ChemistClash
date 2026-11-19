@@ -1,8 +1,8 @@
 // What each finished reaction actually does. Keyed by recipe id (see data.js).
-import { COLS, ROWS, HALF } from '../data.js';
+import { COLS, ROWS, HALF, GASES } from '../data.js';
 import {
   idx, colOf, rowOf, halfTiles, neighbors, shapeTiles, sideOfCol, emit, damage, heal, shieldUp, knockback,
-  ignite, douse, chill, acidify, gasify, raiseWall, breakWall, addStrike, addBolt,
+  ignite, douse, chill, acidify, gasify, raiseWall, breakWall, addStrike, addBolt, leapStrike, washAcid, explode,
 } from './world.js';
 import { modDamage, modHeal, modShield, modDuration } from './traits.js';
 
@@ -13,14 +13,15 @@ const WIDE = [[-1, 0], [0, 0], [1, 0]];
 const RING = SQUARE.filter(([dc, dr]) => dc || dr);
 const DOT = [[0, 0]];
 
+const TOXIN_GAS = new Set(['cl2', 'no2', 'miasma', 'n2o']);
+
 const foeSide = (p) => 1 - p.side;
 const foeOf = (game, p) => game.players[1 - p.id];
-// The tile "4 ahead": same row, same position on the other half of the board.
 const mirrorCol = (p) => p.col + (p.side === 0 ? HALF : -HALF);
 const ahead = (p, offsets) => shapeTiles(mirrorCol(p), p.row, offsets, foeSide(p));
 
 function status(game, p, name, dur) {
-  p[name] = Math.max(p[name], dur);
+  p[name] = Math.max(p[name] || 0, dur);
   emit(game, 'status', { pid: p.id, status: name });
 }
 
@@ -37,7 +38,6 @@ function column(p) {
   return tiles;
 }
 
-// The four tiles of the enemy half that share the caster's row.
 function foeRow(p) {
   const side = foeSide(p);
   const tiles = [];
@@ -45,8 +45,6 @@ function foeRow(p) {
   return tiles;
 }
 
-// A 2x2 block starting at the mirror tile, expanding toward the enemy backline
-// and staying on the board when the caster is on the top or bottom row.
 function crystalBlock(p) {
   const dc = p.side === 0 ? 1 : -1;
   const dr = p.row >= ROWS - 1 ? -1 : 1;
@@ -68,13 +66,30 @@ function gasCloud(game, p, kind, offsets, dur, family = 'toxin') {
   });
 }
 
+function hitFrom(game, attacker, victim, amount, kind) {
+  return damage(game, victim, amount, kind, { from: attacker.id });
+}
+
 export const EFFECTS = {
   h2(game, p) {
     addBolt(game, p, { kind: 'spark', dmg: modDamage(p, 'organic', 6), speed: 16, ignites: true });
   },
 
   hcl(game, p) {
-    addBolt(game, p, { kind: 'acid', dmg: modDamage(p, 'acid', 12), speed: 13, onHit: (i) => acidify(game, i, modDuration(p, 'acid', 3)) });
+    addBolt(game, p, {
+      kind: 'acid', dmg: modDamage(p, 'acid', 10), speed: 13,
+      onHit: (i) => acidify(game, i, modDuration(p, 'acid', 3)),
+    });
+  },
+
+  hocl(game, p) {
+    addStrike(game, {
+      owner: p.id, kind: 'acid', tiles: ahead(p, DOT), delay: 0.35,
+      onTile: (i, victim) => {
+        acidify(game, i, modDuration(p, 'acid', 3.5));
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'acid', 14), 'acid');
+      },
+    });
   },
 
   o2(game, p) {
@@ -101,7 +116,7 @@ export const EFFECTS = {
   },
 
   co(game, p) {
-    gasCloud(game, p, 'co', TALL, 6);
+    gasCloud(game, p, 'co', TALL, 10);
   },
 
   cl2(game, p) {
@@ -119,7 +134,7 @@ export const EFFECTS = {
         breakWall(game, i);
         douse(game, i, wet);
         if (victim) {
-          damage(game, victim, dmg, 'water');
+          hitFrom(game, p, victim, dmg, 'water');
           knockback(game, victim);
         }
       },
@@ -134,7 +149,7 @@ export const EFFECTS = {
       onTile: (i, victim) => {
         const wasWet = chill(game, i, frost);
         if (!victim) return;
-        damage(game, victim, dmg, 'frost');
+        hitFrom(game, p, victim, dmg, 'frost');
         status(game, victim, 'chill', 3);
         if (wasWet) status(game, victim, 'frozen', 1.5);
       },
@@ -158,53 +173,81 @@ export const EFFECTS = {
   },
 
   o3(game, p) {
-    shieldUp(game, p, modShield(p, 20, 'oxidizer'), modDuration(p, 'oxidizer', 6));
+    shieldUp(game, p, modShield(p, 18, 'oxidizer'), modDuration(p, 'oxidizer', 5));
   },
 
   c2h4(game, p) {
-    shieldUp(game, p, modShield(p, 25, 'polymer'), modDuration(p, 'polymer', 8));
+    shieldUp(game, p, modShield(p, 26, 'polymer'), modDuration(p, 'polymer', 8));
   },
 
   h3po4(game, p) {
-    shieldUp(game, p, modShield(p, 35, 'acid'), modDuration(p, 'acid', 10));
+    shieldUp(game, p, modShield(p, 34, 'polymer'), modDuration(p, 'polymer', 10));
   },
 
   c14h10n2o2(game, p) {
-    shieldUp(game, p, modShield(p, 60, 'polymer'), modDuration(p, 'polymer', 15));
+    shieldUp(game, p, modShield(p, 55, 'polymer'), modDuration(p, 'polymer', 14));
   },
 
   h2s(game, p) {
-    gasCloud(game, p, 'h2s', WIDE, 5);
+    gasCloud(game, p, 'h2s', WIDE, 10);
   },
 
   n2o(game, p) {
     gasCloud(game, p, 'n2o', CROSS, 4.5);
   },
 
+  no2(game, p) {
+    const dc = p.side === 0 ? 1 : -1;
+    const dr = p.row >= ROWS - 1 ? -1 : 1;
+    gasCloud(game, p, 'no2', [[0, 0], [dc, 0], [0, dr], [dc, dr]], 6);
+  },
+
   so2(game, p) {
     const foe = foeOf(game, p);
     const target = idx(foe.col, foe.row);
-    const others = game.rng.shuffle(halfTiles(foeSide(p)).filter((i) => i !== target)).slice(0, 4);
+    const others = game.rng.shuffle(halfTiles(foeSide(p)).filter((i) => i !== target)).slice(0, 3);
     addStrike(game, {
       owner: p.id, kind: 'acid', tiles: [target, ...others], delay: 0.7,
       onTile: (i, victim) => {
         acidify(game, i, modDuration(p, 'acid', 4));
-        if (victim) damage(game, victim, modDamage(p, 'acid', 8), 'acid');
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'acid', 8), 'acid');
       },
     });
   },
 
   hcn(game, p) {
-    addStrike(game, {
-      owner: p.id, kind: 'cyanide', tiles: ahead(p, DOT), delay: 0.45,
-      onTile: (_i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'toxin', 22), 'poison');
+    const dmg = modDamage(p, 'toxin', 20);
+    leapStrike(game, p, {
+      col: mirrorCol(p),
+      row: p.row,
+      returnT: 0.28,
+      onLand: (i) => {
+        const victim = game.players.find((pl) => pl.hp > 0 && pl.id !== p.id && idx(pl.col, pl.row) === i);
+        if (victim) hitFrom(game, p, victim, dmg, 'poison');
       },
     });
   },
 
   n2h4(game, p) {
-    addBolt(game, p, { kind: 'rocket', dmg: modDamage(p, 'oxidizer', 20), speed: 22, ignites: true, onHit: (i) => ignite(game, i, modDuration(p, 'oxidizer', 2)) });
+    const startC = p.col;
+    const landC = mirrorCol(p);
+    const dmg = modDamage(p, 'oxidizer', 16);
+    const fireT = modDuration(p, 'oxidizer', 2);
+    const dir = p.side === 0 ? 1 : -1;
+    leapStrike(game, p, {
+      col: landC,
+      row: p.row,
+      returnT: 0.28,
+      onLand: (i) => {
+        for (let c = startC + dir; dir > 0 ? c <= landC : c >= landC; c += dir) {
+          const ti = idx(c, p.row);
+          if (GASES[game.tiles[ti].gas?.kind]?.flammable) explode(game, ti);
+        }
+        ignite(game, i, fireT);
+        const victim = game.players.find((pl) => pl.hp > 0 && pl.id !== p.id && idx(pl.col, pl.row) === i);
+        if (victim) hitFrom(game, p, victim, dmg, 'burn');
+      },
+    });
   },
 
   hno3(game, p) {
@@ -212,7 +255,7 @@ export const EFFECTS = {
       owner: p.id, kind: 'acid', tiles: column(p), delay: 0.5,
       onTile: (i, victim) => {
         acidify(game, i, modDuration(p, 'acid', 3.5));
-        if (victim) damage(game, victim, modDamage(p, 'acid', 12), 'acid');
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'acid', 14), 'acid');
       },
     });
   },
@@ -222,8 +265,8 @@ export const EFFECTS = {
       owner: p.id, kind: 'knockout', tiles: ahead(p, DOT), delay: 0.5,
       onTile: (_i, victim) => {
         if (!victim) return;
-        damage(game, victim, modDamage(p, 'toxin', 6), 'poison');
-        status(game, victim, 'stun', 1.5);
+        hitFrom(game, p, victim, modDamage(p, 'toxin', 6), 'poison');
+        status(game, victim, 'stun', 2.0);
       },
     });
   },
@@ -233,13 +276,17 @@ export const EFFECTS = {
     status(game, p, 'haste', 5);
   },
 
-  // Alkali splash at the mirror tile, then Chebyshev rings expand over the enemy half.
-  // Each ring telegraphs and resolves on its own delay so the foe can step off it.
+  ch5no3(game, p) {
+    cleanse(p);
+    for (const i of halfTiles(p.side)) washAcid(game, i);
+    status(game, p, 'haste', 3);
+  },
+
   nh4oh(game, p) {
     const mc = mirrorCol(p);
     const mr = p.row;
     const side = foeSide(p);
-    const dmg = modDamage(p, 'base', 12);
+    const dmg = modDamage(p, 'base', 10);
     const rings = new Map();
     for (const i of halfTiles(side)) {
       const d = Math.max(Math.abs(colOf(i) - mc), Math.abs(rowOf(i) - mr));
@@ -255,64 +302,121 @@ export const EFFECTS = {
         kind: 'base',
         tiles,
         delay: windup + d * gap,
-        onTile: (_i, victim) => {
-          if (victim) damage(game, victim, dmg, 'base');
+        onTile: (i, victim) => {
+          washAcid(game, i);
+          if (victim) hitFrom(game, p, victim, dmg, 'base');
         },
       });
     }
   },
 
-  h2o2(game, p) {
-    heal(game, p, modHeal(p, 22));
+  ch5n(game, p) {
+    const dmg = modDamage(p, 'base', 8);
+    for (const dy of [-1, 1]) {
+      addBolt(game, p, {
+        kind: 'base', dmg, speed: 14, dy,
+        onHit: (i) => washAcid(game, i),
+      });
+    }
   },
 
-  c2h6o(game, p) {
-    heal(game, p, modHeal(p, 16));
-  },
-
-  c9h8o4(game, p) {
-    heal(game, p, modHeal(p, 35));
-    cleanse(p);
-  },
-
-  c6h12o6(game, p) {
-    heal(game, p, modHeal(p, 45));
-    status(game, p, 'haste', 4);
-  },
-
-  c2h2(game, p) {
-    const side = foeSide(p);
-    const tiles = [];
-    for (let c = side * HALF; c < side * HALF + HALF; c++) tiles.push(idx(c, p.row));
+  c5h5n(game, p) {
+    const dmg = modDamage(p, 'base', 12);
     addStrike(game, {
-      owner: p.id, kind: 'fire', tiles, delay: 0.3,
+      owner: p.id, kind: 'base', tiles: ahead(p, CROSS), delay: 0.45,
       onTile: (i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'organic', 16), 'burn');
-        ignite(game, i, modDuration(p, 'organic', 3));
+        washAcid(game, i);
+        if (victim) hitFrom(game, p, victim, dmg, 'base');
       },
     });
   },
 
-  ph3(game, p) {
+  cs2(game, p) {
+    const dmg = modDamage(p, 'toxin', 7);
+    const mistT = modDuration(p, 'toxin', 2.5);
+    for (const dy of [-1, 1]) {
+      addBolt(game, p, {
+        kind: 'poison', dmg, speed: 14, dy,
+        onHit: (i) => gasify(game, i, 'miasma', mistT),
+      });
+    }
+  },
+
+  cocl(game, p) {
     addStrike(game, {
-      owner: p.id, kind: 'fire', tiles: ahead(p, CROSS), delay: 0.5,
+      owner: p.id, kind: 'poison', tiles: ahead(p, DOT), delay: 0.5,
       onTile: (i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'organic', 8), 'burn');
-        ignite(game, i, modDuration(p, 'organic', 4));
+        const tile = game.tiles[i];
+        let bonus = 0;
+        if (tile.gas && TOXIN_GAS.has(tile.gas.kind)) {
+          bonus = 10;
+          tile.gas = null;
+        }
+        if (victim) {
+          hitFrom(game, p, victim, modDamage(p, 'toxin', 12 + bonus), 'poison');
+          status(game, victim, 'healCut', 4);
+        }
+      },
+    });
+  },
+
+  h2o2(game, p) {
+    heal(game, p, modHeal(p, 20));
+  },
+
+  c2h6o(game, p) {
+    heal(game, p, modHeal(p, 18));
+  },
+
+  c9h8o4(game, p) {
+    heal(game, p, modHeal(p, 32));
+    cleanse(p);
+  },
+
+  c6h12o6(game, p) {
+    heal(game, p, modHeal(p, 40));
+    status(game, p, 'haste', 4);
+  },
+
+  c2h2(game, p) {
+    const dmg = modDamage(p, 'organic', 10);
+    const fireT = modDuration(p, 'organic', 2);
+    for (const dy of [-1, 0, 1]) {
+      addBolt(game, p, {
+        kind: 'spark', dmg, speed: 15, dy, ignites: true,
+        onHit: (i) => ignite(game, i, fireT),
+      });
+    }
+  },
+
+  ph3(game, p) {
+    const dmg = modDamage(p, 'organic', 10);
+    const fireT = modDuration(p, 'organic', 3);
+    leapStrike(game, p, {
+      col: mirrorCol(p),
+      row: p.row,
+      returnT: 0.28,
+      onLand: (land) => {
+        const tiles = shapeTiles(colOf(land), rowOf(land), CROSS, foeSide(p));
+        for (const i of tiles) {
+          ignite(game, i, fireT);
+          const victim = game.players.find((pl) => pl.hp > 0 && pl.id !== p.id && idx(pl.col, pl.row) === i);
+          if (victim) hitFrom(game, p, victim, dmg, 'burn');
+        }
       },
     });
   },
 
   ch4(game, p) {
-    gasCloud(game, p, 'ch4', SQUARE, 7, 'organic');
+    gasCloud(game, p, 'ch4', SQUARE, 12, 'organic');
   },
 
   p4(game, p) {
     addStrike(game, {
       owner: p.id, kind: 'fire', tiles: halfTiles(foeSide(p)), delay: 0.7,
       onTile: (i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'oxidizer', 8), 'burn');
-        ignite(game, i, modDuration(p, 'oxidizer', 3));
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'oxidizer', 6), 'burn');
+        ignite(game, i, modDuration(p, 'oxidizer', 2.5));
       },
     });
   },
@@ -322,18 +426,18 @@ export const EFFECTS = {
       owner: p.id, kind: 'acid', tiles: ahead(p, SQUARE), delay: 0.7,
       onTile: (i, victim) => {
         const wasWet = acidify(game, i, modDuration(p, 'acid', 5));
-        if (victim) damage(game, victim, modDamage(p, 'acid', wasWet ? 34 : 24), 'acid');
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'acid', wasWet ? 34 : 22), 'acid');
       },
     });
   },
 
   c3h8(game, p) {
-    const dmg = modDamage(p, 'organic', 26);
+    const dmg = modDamage(p, 'organic', 28);
     addStrike(game, {
       owner: p.id, kind: 'blast', tiles: ahead(p, CROSS), delay: 0.7,
       onTile: (i, victim) => {
         emit(game, 'explosion', { i, power: dmg });
-        if (victim) damage(game, victim, dmg, 'blast');
+        if (victim) hitFrom(game, p, victim, dmg, 'blast');
         ignite(game, i, modDuration(p, 'organic', 2));
       },
     });
@@ -343,7 +447,7 @@ export const EFFECTS = {
     addStrike(game, {
       owner: p.id, kind: 'solvent', tiles: ahead(p, RING), delay: 0.7,
       onTile: (_i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'toxin', 20), 'poison');
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'toxin', 16), 'poison');
       },
     });
   },
@@ -357,31 +461,30 @@ export const EFFECTS = {
     addStrike(game, {
       owner: p.id, kind: 'fire', tiles, delay: 0.5,
       onTile: (i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'organic', 24), 'burn');
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'organic', 22), 'burn');
         ignite(game, i, modDuration(p, 'organic', 3));
       },
     });
   },
 
-  // Oleanolic acid, the trump card: nowhere on the enemy side is safe.
-  c30h48o3(game, p) {
+  c20h30o5(game, p) {
     addStrike(game, {
       owner: p.id, kind: 'trump', tiles: halfTiles(foeSide(p)), delay: 1.2,
       onTile: (_i, victim) => {
-        if (victim) damage(game, victim, modDamage(p, 'nuke', 80), 'blast');
+        if (victim) hitFrom(game, p, victim, modDamage(p, 'nuke', 80), 'blast');
       },
     });
   },
 
   nh4no3(game, p) {
     const centre = idx(mirrorCol(p), p.row);
-    const core = modDamage(p, 'organic', 45);
-    const splash = modDamage(p, 'organic', 30);
+    const core = modDamage(p, 'organic', 40);
+    const splash = modDamage(p, 'organic', 26);
     addStrike(game, {
       owner: p.id, kind: 'blast', tiles: ahead(p, SQUARE), delay: 0.9,
       onTile: (i, victim) => {
         emit(game, 'explosion', { i, power: i === centre ? core : splash });
-        if (victim) damage(game, victim, i === centre ? core : splash, 'blast');
+        if (victim) hitFrom(game, p, victim, i === centre ? core : splash, 'blast');
         ignite(game, i, modDuration(p, 'organic', 2));
       },
     });

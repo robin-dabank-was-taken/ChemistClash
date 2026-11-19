@@ -138,9 +138,11 @@ export class Room {
       const ch = getCharacter(c.characterId);
       return c.name || ch.name;
     });
+    const packId = getCharacter(seats[0].characterId)?.pack || 'chemistry';
     this.game = createGame({
       names,
       characters: seats.map((c) => c.characterId),
+      packId,
     });
     this.phase = 'playing';
     this.sendAll({ type: 'start', snapshot: snapshotGame(this.game) });

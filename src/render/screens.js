@@ -1,7 +1,8 @@
 // Full-screen layers: backdrop, main menu, how-to-play, recipe book, and the
 // overlays shown during a match (countdown, pause, result).
 import { ELEMENTS, ELEMENT_ORDER, RECIPES, TRUMP_ID } from '../data.js';
-import { CHARACTERS } from '../characters.js';
+import { getPack, DEFAULT_PACK_ID } from '../packs/index.js';
+import { CHARACTERS, PHYSICS_CHARACTERS, SELECTABLE_CHARACTERS, getCharacter } from '../characters.js';
 import { SOLO_BIND_ROWS, codeLabel } from '../controls.js';
 import { drawPortrait } from './chemist.js';
 import { W, H, FIELD_Y, FIELD_BOTTOM, PLAYER_COLORS } from './layout.js';
@@ -417,15 +418,16 @@ function keyRow(ctx, x, y, caps, label) {
 
 const TRUMP = RECIPES.find((r) => r.id === TRUMP_ID);
 const RULES = [
-  'Pick a chemist before each match. Each one buffs one chemistry family (acids, bases, toxins, …) and weakens another. Oleanolic acid is its own NUKE type.',
+  'Pick Chemistry or Physics on character select. Chemists mix atoms (H, C, N…); physicists mix quanta (e, p, γ, q, n, B, ℏ, T) into different reactions.',
+  'Each scientist buffs one family and weakens another. Chemistry nuke is Andrographolide; Physics nuke is Hawking Collapse.',
   'Online rooms use the same bindings as versus the computer. Two players on one keyboard: P1 is WASD with C for the skill, and P2 is the card on the right.',
-  'Each chemist has a unique basic skill that deals 2 damage plus a rider (acid puddle, alkali ripple, toxin mist, ignite clouds, front wall, or next heal ×2).',
-  'Online: host a room, share the 4-character code, both pick chemists — the server runs the match so both sides stay in sync.',
-  'Your hotbar always holds 5 atoms. The moment you throw one, a new one takes its place. Hydrogen and carbon turn up most.',
-  'Throw atoms into the active pot to build a formula, then confirm to react. Pots hold as many atoms as you like.',
-  'Some compounds raise walls on the enemy side. Walls block movement and stop bolts; fire, acid, water jets and blasts break them.',
+  'Each character has a unique basic skill (E) that deals 2 damage plus a rider. Chem: Yui wall, Rin lifesteal. Phys: Minjae leap, Yerin barrier, Doyun lifesteal, Hajun probability dash.',
+  'Online: host a room, share the 4-character code, both pick the same science — the server runs the match so both sides stay in sync.',
+  'Your hotbar always holds 5 pieces. The moment you throw one, a new one takes its place.',
+  'Throw pieces into the active pot to build a formula, then confirm to react. Pots hold as many as you like.',
+  'Chemistry zones are gas clouds; Physics zones are glitch fields. Walls block movement and bolts.',
   'Lab temperature matters. Burning tiles on your side speed reactions up; frost slows them down.',
-  `The OA Nuke is ${TRUMP.chem} (${TRUMP.label}). It hits the whole enemy side, needs ${TRUMP.atoms} atoms, and is not buffed by organic or attack traits.`,
+  `Chemistry nuke: ${TRUMP.chem} (${TRUMP.label}). Physics nuke: Hawking Collapse (e₈p₆n₄ℏ₂).`,
 ];
 
 export function drawControls(ctx, controls) {
@@ -473,7 +475,7 @@ export function drawHowTo(ctx) {
         [['A', '…', 'G'], 'Throw that hotbar atom into the active pot'],
         [['Q'], 'Select pot A'],
         [['W'], 'Select pot B'],
-        [['E'], 'Chemist skill (5s cooldown)'],
+        [['E'], 'Character skill (5s cooldown)'],
         [['C'], 'Confirm reaction'],
         [['V'], 'Empty the active pot'],
         [['SPACE'], 'Fire bolt (2 dmg)'],
@@ -488,7 +490,7 @@ export function drawHowTo(ctx) {
         [['U'], 'Switch pot'],
         [['O'], 'Confirm reaction'],
         [[','], 'Empty the active pot'],
-        [['.'], 'Chemist skill (5s cooldown)'],
+        [['.'], 'Character skill (5s cooldown)'],
       ],
       note: 'P1: WASD, Q toggle, E, X, C skill.',
     },
@@ -519,19 +521,33 @@ export function drawHowTo(ctx) {
   text(ctx, 'TAB opens the recipe book at any time   ·   ESC back', W / 2, 700, { size: 12, color: DIM, align: 'center' });
 }
 
-// The book is split so each page fits on screen at a readable size.
-const PAGES = [
-  { title: 'ATTACKS', recipes: RECIPES.filter((r) => r.tag === 'attack') },
-  { title: 'CLOUDS, WALLS, SHIELDS, HEALS AND THE OA NUKE', recipes: RECIPES.filter((r) => r.tag !== 'attack') },
-];
-export const BOOK_PAGES = PAGES.length;
+export function bookPagesFor(packId = DEFAULT_PACK_ID) {
+  const pack = getPack(packId);
+  const recipes = pack.recipes;
+  const zoneTitle = pack.id === 'physics'
+    ? 'GLITCHES, WALLS, SHIELDS, HEALS AND THE HAWKING NUKE'
+    : 'CLOUDS, WALLS, SHIELDS, HEALS AND THE ANDRO NUKE';
+  return [
+    { title: 'ATTACKS', recipes: recipes.filter((r) => r.tag === 'attack') },
+    { title: zoneTitle, recipes: recipes.filter((r) => r.tag !== 'attack') },
+  ];
+}
 
-export function drawBook(ctx, pageIndex) {
-  const page = PAGES[pageIndex];
+/** @deprecated prefer bookPagesFor(packId); kept for menu-book length */
+export const BOOK_PAGES = bookPagesFor(DEFAULT_PACK_ID).length;
+
+export function drawBook(ctx, pageIndex, packId = DEFAULT_PACK_ID) {
+  const pages = bookPagesFor(packId);
+  const page = pages[pageIndex % pages.length];
+  const pack = getPack(packId);
   shade(ctx, 0.92);
   text(ctx, 'RECIPE BOOK', 45, 42, { size: 26, color: '#ffffff' });
-  text(ctx, `${page.title}   ·   page ${pageIndex + 1} of ${PAGES.length}`, 45, 63, { size: 12, color: PLAYER_COLORS[0] });
-  text(ctx, 'A / D or click: turn page   ·   TAB / ESC: close', W - 45, 42, { size: 12, color: DIM, align: 'right' });
+  text(ctx, `${pack.name} · ${page.title}   ·   page ${(pageIndex % pages.length) + 1} of ${pages.length}`, 45, 63, {
+    size: 12, color: PLAYER_COLORS[0],
+  });
+  text(ctx, 'A / D page   ·   Q chemistry / W physics   ·   TAB / ESC close', W - 45, 42, {
+    size: 12, color: DIM, align: 'right',
+  });
   text(ctx, 'Times are at normal lab temperature', W - 45, 63, { size: 12, color: DIM, align: 'right', weight: 400 });
   const cw = 390;
   const ch = 96;
@@ -545,7 +561,7 @@ export function drawBook(ctx, pageIndex) {
     ctx.strokeStyle = nuke ? TAG_COLOR.nuke : '#2a3650';
     ctx.lineWidth = nuke ? 2 : 1;
     ctx.stroke();
-    formula(ctx, r.parts, x + 12, y + 32, r.parts.length > 3 ? 15 : 20);
+    formula(ctx, r.parts, x + 12, y + 32, r.parts.length > 3 ? 15 : 20, { tokens: pack.tokens });
     text(ctx, r.chem, x + 12, y + 52, { size: 11, color: DIM, weight: 400 });
     text(ctx, r.time ? `${r.time.toFixed(1)} s` : 'instant', x + 12, y + 72, { size: 12, color: r.time ? '#ffd27a' : '#9fe8ff' });
     text(ctx, `${r.atoms} atoms`, x + 12, y + 87, { size: 10, color: DIM, weight: 400 });
@@ -603,46 +619,61 @@ export function drawSelect(ctx, select, time) {
   const who = select.picking;
   const online = select.mode === 'online';
   const title = online
-    ? 'CHOOSE YOUR CHEMIST'
-    : who === 0 ? 'CHOOSE YOUR CHEMIST' : (select.mode === 'bot' ? 'COMPUTER PICKS…' : 'PLAYER 2 — CHOOSE');
-  text(ctx, title, W / 2, 48, { size: 28, color: '#ffffff', align: 'center' });
+    ? 'CHOOSE YOUR SCIENTIST'
+    : who === 0 ? 'CHOOSE YOUR SCIENTIST' : (select.mode === 'bot' ? 'COMPUTER PICKS…' : 'PLAYER 2 — CHOOSE');
+  text(ctx, title, W / 2, 40, { size: 26, color: '#ffffff', align: 'center' });
   const sub = online
     ? (select.onlineRole === 'host' ? 'Online host' : 'Online join')
     : select.mode === 'bot' ? 'Play vs computer' : 'Local two players';
-  text(ctx, sub, W / 2, 78, { size: 13, color: DIM, align: 'center', weight: 400 });
+  text(ctx, sub, W / 2, 68, { size: 13, color: DIM, align: 'center', weight: 400 });
 
-  const c = CHARACTERS[select.cursor];
-  drawPortrait(ctx, c, W / 2, 250, 220, time);
-  text(ctx, c.name, W / 2, 390, { size: 36, color: c.accent, align: 'center' });
-  text(ctx, c.title, W / 2, 422, { size: 16, color: INK, align: 'center', weight: 400 });
-  text(ctx, c.blurb, W / 2, 450, { size: 15, color: DIM, align: 'center', weight: 400 });
+  const c = SELECTABLE_CHARACTERS[select.cursor];
+  drawPortrait(ctx, c, W / 2, 190, 150, time);
+  text(ctx, c.name, W / 2, 290, { size: 30, color: c.accent, align: 'center' });
+  text(ctx, c.title, W / 2, 318, { size: 14, color: INK, align: 'center', weight: 400 });
+  text(ctx, c.blurb, W / 2, 340, { size: 13, color: DIM, align: 'center', weight: 400 });
+  text(ctx, c.pack === 'physics' ? 'PHYSICS' : 'CHEMISTRY', W / 2, 360, {
+    size: 11, color: c.pack === 'physics' ? '#9ad0ff' : '#9be33c', align: 'center', weight: 400,
+  });
 
-  // roster strip
-  const stripW = CHARACTERS.length * 92;
-  let sx = (W - stripW) / 2;
+  const cell = 88;
+  const rows = [
+    { label: 'CHEMISTRY', color: '#9be33c', list: CHARACTERS, y: 390 },
+    { label: 'PHYSICS', color: '#9ad0ff', list: PHYSICS_CHARACTERS, y: 520 },
+  ];
   select.rects = [];
-  CHARACTERS.forEach((ch, i) => {
-    const on = i === select.cursor;
-    const x = sx + i * 92;
-    const y = 480;
-    rr(ctx, x, y, 84, 84, 12);
-    ctx.fillStyle = on ? alpha(ch.accent, 0.25) : 'rgba(255,255,255,0.04)';
-    ctx.fill();
-    ctx.strokeStyle = on ? ch.accent : '#2a3650';
-    ctx.lineWidth = on ? 2.5 : 1;
-    ctx.stroke();
-    drawPortrait(ctx, ch, x + 42, y + 42, 70, time);
-    text(ctx, ch.name, x + 42, y + 100, { size: 11, color: on ? '#ffffff' : DIM, align: 'center' });
-    select.rects.push({ i, x, y, w: 84, h: 100 });
+  rows.forEach((row) => {
+    text(ctx, row.label, W / 2, row.y - 8, { size: 11, color: row.color, align: 'center', weight: 400 });
+    const stripW = row.list.length * cell;
+    const sx = (W - stripW) / 2;
+    row.list.forEach((ch, k) => {
+      const i = SELECTABLE_CHARACTERS.findIndex((x) => x.id === ch.id);
+      const on = i === select.cursor;
+      const x = sx + k * cell;
+      const y = row.y;
+      rr(ctx, x, y, cell - 10, 68, 10);
+      ctx.fillStyle = on ? alpha(ch.accent, 0.25) : 'rgba(255,255,255,0.04)';
+      ctx.fill();
+      ctx.strokeStyle = on ? ch.accent : '#2a3650';
+      ctx.lineWidth = on ? 2.5 : 1;
+      ctx.stroke();
+      drawPortrait(ctx, ch, x + (cell - 10) / 2, y + 34, 54, time);
+      text(ctx, ch.name, x + (cell - 10) / 2, y + 84, {
+        size: 11, color: on ? '#ffffff' : DIM, align: 'center',
+      });
+      select.rects.push({ i, x, y, w: cell - 10, h: 92 });
+    });
   });
 
   if (select.picks[0]) {
-    text(ctx, `P1: ${CHARACTERS.find((x) => x.id === select.picks[0])?.name || ''}`, 40, 640, { size: 14, color: PLAYER_COLORS[0] });
+    text(ctx, `P1: ${getCharacter(select.picks[0]).name}`, 40, 650, { size: 14, color: PLAYER_COLORS[0] });
   }
   if (select.picks[1]) {
-    text(ctx, `P2: ${CHARACTERS.find((x) => x.id === select.picks[1])?.name || ''}`, W - 40, 640, { size: 14, color: PLAYER_COLORS[1], align: 'right' });
+    text(ctx, `P2: ${getCharacter(select.picks[1]).name}`, W - 40, 650, { size: 14, color: PLAYER_COLORS[1], align: 'right' });
   }
-  text(ctx, 'A / D browse   ·   ENTER lock in   ·   ESC back', W / 2, 690, { size: 12, color: DIM, align: 'center' });
+  text(ctx, 'A / D browse   ·   W / S rows   ·   ENTER lock in   ·   ESC back', W / 2, 690, {
+    size: 12, color: DIM, align: 'center',
+  });
 }
 
 export function drawOnlineGate(ctx, online) {
@@ -724,7 +755,7 @@ export function drawOnlineLobby(ctx, online) {
     ctx.stroke();
     text(ctx, i === 0 ? 'HOST' : 'GUEST', x + 110, y + 28, { size: 12, color: DIM, align: 'center' });
     if (seat) {
-      const ch = CHARACTERS.find((c) => c.id === seat.characterId);
+      const ch = seat.characterId ? getCharacter(seat.characterId) : null;
       text(ctx, seat.name || ch?.name || 'Player', x + 110, y + 70, {
         size: 20, color: PLAYER_COLORS[i], align: 'center',
       });
