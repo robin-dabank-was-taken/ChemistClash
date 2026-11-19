@@ -57,6 +57,7 @@ export function createGame({
     bolts: [],
     strikes: [],
     fuses: [],
+    dashes: [], // timed skill leaps (e.g. Kuro return)
     events: [], // drained by whoever is presenting the match
   };
   game.players.push(
@@ -274,6 +275,20 @@ export function step(game, dt) {
     }
     game.fuses = game.fuses.filter((f) => f.t > 0);
     for (const i of lit) explode(game, i);
+  }
+
+  if (game.dashes?.length) {
+    for (const d of game.dashes) {
+      d.t -= dt;
+      if (d.t > 0) continue;
+      const p = game.players[d.pid];
+      if (p && p.hp > 0) {
+        p.col = d.startC;
+        p.row = d.startR;
+        emit(game, 'move', { pid: p.id });
+      }
+    }
+    game.dashes = game.dashes.filter((d) => d.t > 0);
   }
 
   for (const tile of game.tiles) {

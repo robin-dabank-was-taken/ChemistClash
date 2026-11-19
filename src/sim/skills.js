@@ -1,5 +1,5 @@
 // Character basic skills — 2 damage plus a chemist-specific rider. 5s cooldown.
-import { GASES, HALF } from '../data.js';
+import { COLS, GASES, HALF } from '../data.js';
 import {
   idx, colOf, rowOf, halfTiles, inField, sideOfCol, emit, damage,
   acidify, gasify, raiseWall, ignite, explode, addStrike, addBolt,
@@ -7,17 +7,8 @@ import {
 
 export const SKILL_CD = 5;
 
-const CROSS = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
-
 const foeSide = (p) => 1 - p.side;
 const mirrorCol = (p) => p.col + (p.side === 0 ? HALF : -HALF);
-
-function frontCol(p) {
-  const dir = p.side === 0 ? 1 : -1;
-  let c = p.col;
-  while (inField(c + dir, p.row) && sideOfCol(c + dir) === p.side) c += dir;
-  return c;
-}
 
 function akari(game, p) {
   addBolt(game, p, {
@@ -52,21 +43,43 @@ function sora(game, p) {
 }
 
 function kuro(game, p) {
-  const dest = frontCol(p);
-  if (dest !== p.col) {
-    p.col = dest;
-    emit(game, 'move', { pid: p.id });
+  const startC = p.col;
+  const startR = p.row;
+  const dir = p.side === 0 ? 1 : -1;
+  // One leap of 4 tiles (all at once), forced onto the enemy half.
+  let landC = startC + dir * 4;
+  if (!inField(landC, startR)) landC = dir > 0 ? COLS - 1 : 0;
+  if (sideOfCol(landC) === p.side) {
+    landC = p.side === 0 ? Math.min(COLS - 1, HALF + 2) : Math.max(0, HALF - 3);
   }
-  addBolt(game, p, { kind: 'spark', dmg: 2, speed: 18 });
-  const side = foeSide(p);
-  const mc = mirrorCol(p);
-  const mr = p.row;
-  for (const [dc, dr] of CROSS) {
-    const c = mc + dc;
-    const r = mr + dr;
-    if (!inField(c, r) || sideOfCol(c) !== side) continue;
-    gasify(game, idx(c, r), 'miasma', 2);
+  p.col = landC;
+  p.row = startR;
+  emit(game, 'move', { pid: p.id });
+
+  // 2×3 mist directly in front of Kuro (2 deep × 3 tall).
+  const mist = [];
+  for (let depth = 1; depth <= 2; depth++) {
+    const c = landC + dir * depth;
+    for (let dr = -1; dr <= 1; dr++) {
+      const r = startR + dr;
+      if (!inField(c, r)) continue;
+      mist.push(idx(c, r));
+      gasify(game, idx(c, r), 'miasma', 2);
+    }
   }
+  const foe = game.players[1 - p.id];
+  if (foe.hp > 0 && mist.includes(idx(foe.col, foe.row))) {
+    damage(game, foe, 2, 'poison');
+  }
+
+  // Linger on the enemy tile so the leap is visible, then leap back in one move.
+  if (!game.dashes) game.dashes = [];
+  game.dashes.push({
+    pid: p.id,
+    startC,
+    startR,
+    t: 0.28,
+  });
 }
 
 function rin(game, p) {

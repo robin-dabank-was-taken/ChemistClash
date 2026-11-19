@@ -74,6 +74,9 @@ export function snapshotGame(game) {
     bolts: game.bolts.map(snapBolt),
     strikes: game.strikes.map(snapStrike),
     fuses: game.fuses.map((f) => ({ i: f.i, t: f.t })),
+    dashes: (game.dashes || []).map((d) => ({
+      pid: d.pid, startC: d.startC, startR: d.startR, t: d.t,
+    })),
   };
 }
 
@@ -131,6 +134,9 @@ export function hydrateGame(snap, into = null) {
   game.bolts = snap.bolts.map((b) => ({ ...b, onHit: null }));
   game.strikes = snap.strikes.map((s) => ({ ...s, tiles: s.tiles.slice(), onTile: () => {} }));
   game.fuses = snap.fuses.map((f) => ({ i: f.i, t: f.t }));
+  game.dashes = (snap.dashes || []).map((d) => ({
+    pid: d.pid, startC: d.startC, startR: d.startR, t: d.t,
+  }));
   game.events = [];
   return game;
 }
