@@ -354,8 +354,14 @@ function titleTiles(ctx, word, y, time, offset) {
   });
 }
 
-export const MENU = ['bot', 'local', 'book', 'howto'];
-const MENU_LABEL = { bot: 'PLAY VS COMPUTER', local: '2 PLAYERS, ONE KEYBOARD', book: 'RECIPE BOOK', howto: 'HOW TO PLAY' };
+export const MENU = ['bot', 'local', 'online', 'book', 'howto'];
+const MENU_LABEL = {
+  bot: 'PLAY VS COMPUTER',
+  local: '2 PLAYERS, ONE KEYBOARD',
+  online: 'ONLINE · ROOM CODE',
+  book: 'RECIPE BOOK',
+  howto: 'HOW TO PLAY',
+};
 
 // Returns the clickable rectangle of every item so the mouse works too.
 export function drawMenu(ctx, menu, levels, time) {
@@ -375,9 +381,9 @@ export function drawMenu(ctx, menu, levels, time) {
   const rects = [];
   MENU.forEach((id, k) => {
     const w = 470;
-    const h = 50;
+    const h = 44;
     const x = (W - w) / 2;
-    const y = 312 + k * 62;
+    const y = 300 + k * 52;
     const on = menu.index === k;
     rr(ctx, x, y, w, h, 12);
     ctx.fillStyle = on ? alpha(PLAYER_COLORS[0], 0.2) : 'rgba(255,255,255,0.04)';
@@ -410,7 +416,8 @@ function keyRow(ctx, x, y, caps, label) {
 const TRUMP = RECIPES.find((r) => r.id === TRUMP_ID);
 const RULES = [
   'Pick a chemist before each match. Each one buffs one chemistry family (acids, bases, toxins, …) and weakens another. Oleanolic acid is its own NUKE type.',
-  'Versus the computer: arrows move, 1–5 throw atoms, Q and W select pot A or B, E confirms the reaction, R empties the active pot.',
+  'Versus the computer or online: arrows move, 1–5 throw atoms, Q and W select pot A or B, E confirms the reaction, R empties the active pot.',
+  'Online: host a room, share the 4-character code, both pick chemists — the server runs the match so both sides stay in sync.',
   'Your hotbar always holds 5 atoms. The moment you throw one, a new one takes its place. Hydrogen and carbon turn up most.',
   'Throw atoms into the active pot to build a formula, then confirm to react. Pots hold as many atoms as you like.',
   'Some compounds raise walls on the enemy side. Walls block movement and stop bolts; fire, acid, water jets and blasts break them.',
@@ -553,11 +560,15 @@ function dialog(ctx, title, color, lines) {
 export function drawSelect(ctx, select, time) {
   shade(ctx, 0.55);
   const who = select.picking;
-  const color = PLAYER_COLORS[who];
-  text(ctx, who === 0 ? 'CHOOSE YOUR CHEMIST' : (select.mode === 'bot' ? 'COMPUTER PICKS…' : 'PLAYER 2 — CHOOSE'), W / 2, 48, {
-    size: 28, color: '#ffffff', align: 'center',
-  });
-  text(ctx, select.mode === 'bot' ? 'Play vs computer' : 'Local two players', W / 2, 78, { size: 13, color: DIM, align: 'center', weight: 400 });
+  const online = select.mode === 'online';
+  const title = online
+    ? 'CHOOSE YOUR CHEMIST'
+    : who === 0 ? 'CHOOSE YOUR CHEMIST' : (select.mode === 'bot' ? 'COMPUTER PICKS…' : 'PLAYER 2 — CHOOSE');
+  text(ctx, title, W / 2, 48, { size: 28, color: '#ffffff', align: 'center' });
+  const sub = online
+    ? (select.onlineRole === 'host' ? 'Online host' : 'Online join')
+    : select.mode === 'bot' ? 'Play vs computer' : 'Local two players';
+  text(ctx, sub, W / 2, 78, { size: 13, color: DIM, align: 'center', weight: 400 });
 
   const c = CHARACTERS[select.cursor];
   drawPortrait(ctx, c, W / 2, 250, 220, time);
@@ -591,6 +602,111 @@ export function drawSelect(ctx, select, time) {
     text(ctx, `P2: ${CHARACTERS.find((x) => x.id === select.picks[1])?.name || ''}`, W - 40, 640, { size: 14, color: PLAYER_COLORS[1], align: 'right' });
   }
   text(ctx, 'A / D browse   ·   ENTER lock in   ·   ESC back', W / 2, 690, { size: 12, color: DIM, align: 'center' });
+}
+
+export function drawOnlineGate(ctx, online) {
+  shade(ctx, 0.55);
+  text(ctx, 'ONLINE DUEL', W / 2, 70, { size: 34, color: '#ffffff', align: 'center' });
+  text(ctx, 'Authoritative rooms · short codes · works with a friend', W / 2, 108, {
+    size: 14, color: DIM, align: 'center', weight: 400,
+  });
+  if (online.netLabel) {
+    text(ctx, online.netLabel, W / 2, 140, { size: 13, color: online.netOk ? '#7dffa0' : '#ffb23c', align: 'center', weight: 400 });
+  }
+  const items = [
+    { id: 'host', label: 'HOST A ROOM' },
+    { id: 'join', label: 'JOIN WITH CODE' },
+  ];
+  online.rects = [];
+  items.forEach((it, k) => {
+    const w = 420;
+    const h = 56;
+    const x = (W - w) / 2;
+    const y = 190 + k * 80;
+    const on = online.index === k;
+    rr(ctx, x, y, w, h, 12);
+    ctx.fillStyle = on ? alpha(PLAYER_COLORS[0], 0.2) : 'rgba(255,255,255,0.04)';
+    ctx.fill();
+    ctx.strokeStyle = on ? PLAYER_COLORS[0] : '#2a3650';
+    ctx.lineWidth = on ? 2 : 1;
+    ctx.stroke();
+    text(ctx, it.label, W / 2, y + h / 2 + 1, { size: 18, color: on ? '#ffffff' : INK, align: 'center', baseline: 'middle' });
+    online.rects.push({ id: it.id, k, x, y, w, h });
+  });
+  if (online.hint) {
+    ctx.font = font(13);
+    wrap(ctx, online.hint, 560).forEach((line, i) => {
+      text(ctx, line, W / 2, 370 + i * 22, { size: 13, color: DIM, align: 'center', weight: 400 });
+    });
+  }
+  if (online.error) {
+    ctx.font = font(14);
+    wrap(ctx, online.error, 600).forEach((line, i) => {
+      text(ctx, line, W / 2, 480 + i * 22, { size: 14, color: '#ff8f7a', align: 'center', weight: 400 });
+    });
+  }
+  text(ctx, 'W / S choose   ·   ENTER   ·   ESC back', W / 2, 640, { size: 12, color: DIM, align: 'center' });
+}
+
+export function drawOnlineJoin(ctx, online) {
+  shade(ctx, 0.55);
+  text(ctx, 'ENTER ROOM CODE', W / 2, 120, { size: 30, color: '#ffffff', align: 'center' });
+  const code = (online.code || '').padEnd(4, '_');
+  text(ctx, code.split('').join('  '), W / 2, 260, { size: 56, color: PLAYER_COLORS[0], align: 'center' });
+  text(ctx, 'Type 4 characters   ·   ENTER join   ·   BACKSPACE erase   ·   ESC back', W / 2, 360, {
+    size: 13, color: DIM, align: 'center', weight: 400,
+  });
+  if (online.error) {
+    text(ctx, online.error, W / 2, 420, { size: 14, color: '#ff8f7a', align: 'center', weight: 400 });
+  }
+  if (online.status) {
+    text(ctx, online.status, W / 2, 460, { size: 14, color: INK, align: 'center', weight: 400 });
+  }
+}
+
+export function drawOnlineLobby(ctx, online) {
+  shade(ctx, 0.55);
+  text(ctx, 'ROOM LOBBY', W / 2, 70, { size: 30, color: '#ffffff', align: 'center' });
+  text(ctx, 'Share this code with your opponent', W / 2, 108, { size: 14, color: DIM, align: 'center', weight: 400 });
+  text(ctx, online.code || '----', W / 2, 190, { size: 64, color: PLAYER_COLORS[0], align: 'center' });
+
+  const seats = online.seats || [null, null];
+  for (let i = 0; i < 2; i++) {
+    const seat = seats[i];
+    const x = i === 0 ? W / 2 - 260 : W / 2 + 40;
+    const y = 280;
+    rr(ctx, x, y, 220, 160, 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fill();
+    ctx.strokeStyle = PLAYER_COLORS[i];
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    text(ctx, i === 0 ? 'HOST' : 'GUEST', x + 110, y + 28, { size: 12, color: DIM, align: 'center' });
+    if (seat) {
+      const ch = CHARACTERS.find((c) => c.id === seat.characterId);
+      text(ctx, seat.name || ch?.name || 'Player', x + 110, y + 70, {
+        size: 20, color: PLAYER_COLORS[i], align: 'center',
+      });
+      text(ctx, ch ? ch.title : 'Picking…', x + 110, y + 100, {
+        size: 13, color: INK, align: 'center', weight: 400,
+      });
+      text(ctx, seat.ready ? 'READY' : 'NOT READY', x + 110, y + 132, {
+        size: 14, color: seat.ready ? '#7dffa0' : '#ffb23c', align: 'center',
+      });
+    } else {
+      text(ctx, 'Waiting…', x + 110, y + 90, { size: 18, color: DIM, align: 'center' });
+    }
+  }
+
+  if (online.status) {
+    text(ctx, online.status, W / 2, 500, { size: 15, color: INK, align: 'center', weight: 400 });
+  }
+  if (online.error) {
+    text(ctx, online.error, W / 2, 540, { size: 14, color: '#ff8f7a', align: 'center', weight: 400 });
+  }
+  text(ctx, 'ENTER pick chemist   ·   match starts when both are READY   ·   ESC leave', W / 2, 640, {
+    size: 12, color: DIM, align: 'center',
+  });
 }
 
 export function drawPause(ctx) {

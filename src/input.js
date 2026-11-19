@@ -36,6 +36,7 @@ const REPEAT_DELAY = 0.22;
 export class Input {
   constructor() {
     this.bindings = new Map();
+    this.dispatch = null; // optional (pid, action) => {} for online play
     this.reset();
   }
 
@@ -83,19 +84,32 @@ export class Input {
   }
 
   update(game, dt) {
-    for (const { pid, action } of this.queue) act(game, pid, action);
+    const apply = (pid, action) => {
+      if (this.dispatch) this.dispatch(pid, action);
+      else act(game, pid, action);
+    };
+    for (const { pid, action } of this.queue) apply(pid, action);
     this.queue.length = 0;
     for (let pid = 0; pid < 2; pid++) {
       const pending = this.pending[pid];
       if (pending) {
         pending.ttl -= dt;
-        if (act(game, pid, pending.action) || pending.ttl <= 0) this.pending[pid] = null;
+        // Online: fire once immediately; local: keep trying until move lands.
+        if (this.dispatch) {
+          apply(pid, pending.action);
+          this.pending[pid] = null;
+          continue;
+        }
+        if (apply(pid, pending.action) || pending.ttl <= 0) this.pending[pid] = null;
         continue;
       }
       const latest = [...this.held[pid].values()].pop();
       if (!latest) continue;
       latest.t += dt;
-      if (latest.t >= REPEAT_DELAY) act(game, pid, latest.action);
+      if (latest.t >= REPEAT_DELAY) {
+        apply(pid, latest.action);
+        if (this.dispatch) latest.t = 0;
+      }
     }
   }
 }

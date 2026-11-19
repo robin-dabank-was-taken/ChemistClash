@@ -18,5 +18,7 @@ export function makeRng(seed) {
       }
       return arr;
     },
+    getState: () => a >>> 0,
+    setState: (s) => { a = s >>> 0; },
   };
 }

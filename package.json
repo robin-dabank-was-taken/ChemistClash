@@ -6,6 +6,15 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "party:dev": "wrangler dev",
+    "party:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "partyserver": "^0.0.75",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.45.0"
   }
 }
