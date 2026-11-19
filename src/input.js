@@ -31,7 +31,11 @@ export const KEYS_P2 = {
 };
 
 const BUFFER = 0.16;
-const REPEAT_DELAY = 0.22;
+// Longer pause before the first hold-repeat so a normal tap is exactly one tile.
+const REPEAT_INITIAL = 0.38;
+const REPEAT_DELAY = 0.16;
+// Client-side gate for online so two packets can't land as two steps.
+const ONLINE_MOVE_CD = 0.15;
 
 export class Input {
   constructor() {
@@ -62,6 +66,7 @@ export class Input {
     this.queue = [];
     this.held = [new Map(), new Map()];
     this.pending = [null, null];
+    this.moveCd = [0, 0];
   }
 
   keydown(code, repeat) {
@@ -70,7 +75,8 @@ export class Input {
     if (repeat) return true;
     if (b.action.type === 'move') {
       this.held[b.pid].delete(code);
-      this.held[b.pid].set(code, { action: b.action, t: 0 });
+      // t counts up; first repeat after REPEAT_INITIAL, then every REPEAT_DELAY.
+      this.held[b.pid].set(code, { action: b.action, t: 0, repeated: false });
       this.pending[b.pid] = { action: b.action, ttl: BUFFER };
     } else {
       this.queue.push(b);
@@ -84,31 +90,55 @@ export class Input {
   }
 
   update(game, dt) {
+    for (let pid = 0; pid < 2; pid++) {
+      this.moveCd[pid] = Math.max(0, this.moveCd[pid] - dt);
+    }
+
     const apply = (pid, action) => {
-      if (this.dispatch) this.dispatch(pid, action);
-      else act(game, pid, action);
+      if (action.type === 'move' && this.dispatch) {
+        if (this.moveCd[pid] > 0) return false;
+        this.moveCd[pid] = ONLINE_MOVE_CD;
+        this.dispatch(pid, action);
+        return true;
+      }
+      if (this.dispatch) {
+        this.dispatch(pid, action);
+        return true;
+      }
+      return act(game, pid, action);
     };
+
     for (const { pid, action } of this.queue) apply(pid, action);
     this.queue.length = 0;
+
     for (let pid = 0; pid < 2; pid++) {
       const pending = this.pending[pid];
       if (pending) {
         pending.ttl -= dt;
-        // Online: fire once immediately; local: keep trying until move lands.
-        if (this.dispatch) {
-          apply(pid, pending.action);
+        const ok = apply(pid, pending.action);
+        if (ok || pending.ttl <= 0) {
           this.pending[pid] = null;
-          continue;
+          // Restart hold clock from the successful first step (or give-up).
+          for (const h of this.held[pid].values()) {
+            h.t = 0;
+            h.repeated = false;
+          }
         }
-        if (apply(pid, pending.action) || pending.ttl <= 0) this.pending[pid] = null;
         continue;
       }
+
       const latest = [...this.held[pid].values()].pop();
       if (!latest) continue;
       latest.t += dt;
-      if (latest.t >= REPEAT_DELAY) {
-        apply(pid, latest.action);
-        if (this.dispatch) latest.t = 0;
+      const need = latest.repeated ? REPEAT_DELAY : REPEAT_INITIAL;
+      if (latest.t >= need) {
+        if (apply(pid, latest.action)) {
+          latest.t = 0;
+          latest.repeated = true;
+        } else {
+          // Blocked (wall / cd): keep trying without accelerating into a double.
+          latest.t = need;
+        }
       }
     }
   }
