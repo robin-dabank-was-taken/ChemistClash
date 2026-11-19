@@ -1,6 +1,6 @@
 // Rebindable controls for solo / online (room-code) play. Persisted in localStorage.
 
-const STORAGE_KEY = 'chemistClash.soloBinds.v2';
+const STORAGE_KEY = 'chemistClash.soloBinds.v3';
 
 export const SOLO_BIND_ROWS = [
   { id: 'up', label: 'Move up' },
@@ -22,10 +22,10 @@ export const SOLO_BIND_ROWS = [
 ];
 
 export const DEFAULT_SOLO_BINDS = {
-  up: 'KeyI',
-  down: 'KeyK',
-  left: 'KeyJ',
-  right: 'KeyL',
+  up: 'ArrowUp',
+  down: 'ArrowDown',
+  left: 'ArrowLeft',
+  right: 'ArrowRight',
   slot0: 'KeyA',
   slot1: 'KeyS',
   slot2: 'KeyD',

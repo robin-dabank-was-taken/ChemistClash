@@ -39,7 +39,7 @@ Quick test without editing the file:
 
 | Mode | Notes |
 |------|--------|
-| Play vs Computer | Solo controls (IJKL move, A–G throw, Space bolt) |
+| Play vs Computer | Solo controls (arrows move, A–G throw, Space bolt) |
 | 2 Players | One keyboard |
 | Online | Host/join with a short room code |
 

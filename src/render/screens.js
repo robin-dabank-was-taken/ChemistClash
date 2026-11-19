@@ -469,7 +469,7 @@ export function drawHowTo(ctx) {
     {
       x: 70, title: 'VS COMPUTER', color: PLAYER_COLORS[0],
       rows: [
-        [['I', 'J', 'K', 'L'], 'Move one tile'],
+        [['↑', '←', '↓', '→'], 'Move one tile'],
         [['A', '…', 'G'], 'Throw that hotbar atom into the active pot'],
         [['Q'], 'Select pot A'],
         [['W'], 'Select pot B'],
