@@ -8,8 +8,6 @@ A real-time grid duel where you mix chemical formulas instead of playing cards.
 npm start
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
-
 ## Online multiplayer (room codes)
 
 Uses an **authoritative** sim (`act` / `step` on the server). Clients send inputs and paint snapshots.
@@ -50,3 +48,7 @@ Quick test without editing the file:
 ```bash
 npm test
 ```
+
+
+THANK YOU ONE STEP FROM EDEN FOR THE INSPIRATION
+IF YOU WANT IT DOWN I CAN DO THAT
