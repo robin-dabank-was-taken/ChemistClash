@@ -19,11 +19,59 @@ export const PANEL_H = H - PANEL_Y - 10;
 export const PANEL_W = 610;
 export const PANEL_X = [20, W - 20 - PANEL_W];
 
-export const PLAYER_COLORS = ['#35d6c5', '#ff7d5c'];
+// Index 0 = blue (you / left), 1 = red (foe / right). Online remaps so each
+// client always paints themselves blue and the opponent red.
+export const PLAYER_COLORS = ['#3d8bfd', '#ff5c5c'];
+
+// Per-frame view perspective for online: flip the board so the local player
+// is always on the left, and color by local vs foe instead of absolute pid.
+let _flip = false;
+let _localPid = null;
+
+export function beginView({ flip = false, localPid = null } = {}) {
+  _flip = !!flip;
+  _localPid = localPid == null ? null : localPid;
+}
+
+export function endView() {
+  _flip = false;
+  _localPid = null;
+}
+
+export function viewFlipped() {
+  return _flip;
+}
+
+export function viewCol(c) {
+  return _flip ? COLS - 1 - c : c;
+}
+
+export function viewX(x) {
+  return _flip ? COLS - 1 - x : x;
+}
+
+export function viewDir(dir) {
+  return _flip ? -dir : dir;
+}
+
+export function viewFacing(face) {
+  return _flip ? -face : face;
+}
+
+/** Screen slot 0 = left, 1 = right. Online: local always left. */
+export function viewSlot(pid) {
+  if (_localPid == null) return pid;
+  return pid === _localPid ? 0 : 1;
+}
+
+export function playerColor(pid) {
+  return PLAYER_COLORS[viewSlot(pid)];
+}
 
 export function tileRect(c, r) {
+  const vc = viewCol(c);
   return {
-    x: FIELD_X + c * (TILE_W + GAP) + (c >= HALF ? MID_GAP - GAP : 0),
+    x: FIELD_X + vc * (TILE_W + GAP) + (vc >= HALF ? MID_GAP - GAP : 0),
     y: FIELD_Y + r * (TILE_H + GAP),
     w: TILE_W,
     h: TILE_H,

@@ -3,7 +3,7 @@
 import { getPack, DEFAULT_PACK_ID } from '../packs/index.js';
 import { TUNE, reactionRate } from '../sim/world.js';
 import { suggest, hasFuture } from '../hints.js';
-import { W, FIELD_X, FIELD_Y, FIELD_BOTTOM, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, PLAYER_COLORS } from './layout.js';
+import { W, FIELD_X, FIELD_Y, FIELD_BOTTOM, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, playerColor, viewSlot } from './layout.js';
 import { pxPanel, alpha, text, font, formula, elementTile, atom, keycap } from './draw.js';
 
 const BAR_W = 500;
@@ -12,9 +12,9 @@ const DIM = '#7f8da6';
 
 export function drawTopBar(ctx, game, view) {
   for (const p of game.players) {
-    const right = p.id === 1;
+    const right = viewSlot(p.id) === 1;
     const x = right ? W - 24 - BAR_W : 24;
-    const color = PLAYER_COLORS[p.id];
+    const color = playerColor(p.id);
     const title = p.character ? `${p.name} · ${p.character.name}` : p.name;
     text(ctx, title.toUpperCase(), right ? x + BAR_W : x, 30, { size: 13, color, align: right ? 'right' : 'left' });
 
@@ -79,7 +79,7 @@ export function drawTopBar(ctx, game, view) {
 
 export function drawThermometers(ctx, game) {
   for (const p of game.players) {
-    const cx = p.id === 0 ? FIELD_X / 2 : W - FIELD_X / 2;
+    const cx = viewSlot(p.id) === 0 ? FIELD_X / 2 : W - FIELD_X / 2;
     const top = FIELD_Y + 40;
     const bottom = FIELD_BOTTOM - 62;
     const mid = (top + bottom) / 2;
@@ -113,9 +113,9 @@ export function drawThermometers(ctx, game) {
 
 export function drawPanel(ctx, p, keys, view, time, pack = null) {
   const activePack = pack || getPack(DEFAULT_PACK_ID);
-  const x = PANEL_X[p.id];
+  const x = PANEL_X[viewSlot(p.id)];
   const y = PANEL_Y;
-  const color = PLAYER_COLORS[p.id];
+  const color = playerColor(p.id);
   pxPanel(ctx, x, y, PANEL_W, PANEL_H, {
     fill: 'rgba(10,14,22,0.94)', edge: alpha(color, 0.55), lit: alpha(color, 0.35),
   });
@@ -150,7 +150,7 @@ const MAX_LOOSE = ATOM_SPOTS.length;
 
 function drawPot(ctx, p, k, x, y, keys, pulse, time, pack) {
   const pot = p.pots[k];
-  const color = PLAYER_COLORS[p.id];
+  const color = playerColor(p.id);
   const active = p.activePot === k;
   const reacting = pot.state === 'reacting';
   const ready = !reacting && pot.atoms.length ? pack.findRecipe(pot.atoms) : null;

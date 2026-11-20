@@ -53,7 +53,7 @@ function snapPlayer(p) {
 function snapBolt(b) {
   return {
     x: b.x, row: b.row, dir: b.dir, speed: b.speed, age: b.age,
-    owner: b.owner, kind: b.kind, dmg: b.dmg,
+    owner: b.owner, kind: b.kind, dmg: b.dmg, dy: b.dy || 0,
     ignites: !!b.ignites, dead: !!b.dead,
   };
 }

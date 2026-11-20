@@ -1,7 +1,7 @@
 // Board chemists: RPG Maker MZ–style sprites.
 // Clean state machine: idle / walk / cast / hurt / death — minimal motion FX.
 import { getCharacter } from '../characters.js';
-import { PLAYER_COLORS } from './layout.js';
+import { playerColor, viewFacing } from './layout.js';
 import { alpha, text } from './draw.js';
 import { getPortrait, getWalkSheet, getPoseSheet, POSE } from './sprites.js';
 
@@ -13,8 +13,8 @@ const WALK_ORDER = [1, 0, 1, 2];
 
 export function drawChemist(ctx, p, pos, time, anim = null) {
   const ch = p.character || getCharacter(p.characterId);
-  const color = PLAYER_COLORS[p.id];
-  const facing = anim?.face ?? (p.side === 0 ? 1 : -1);
+  const color = playerColor(p.id);
+  const facing = viewFacing(anim?.face ?? (p.side === 0 ? 1 : -1));
   const state = anim?.state || (p.hp <= 0 ? 'death' : 'idle');
   const walkSheet = getWalkSheet(ch.id);
   const poseSheet = getPoseSheet(ch.id);

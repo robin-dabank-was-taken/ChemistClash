@@ -6,7 +6,7 @@ import { CHARACTERS } from '../src/characters.js';
 import { createGame, step, act } from '../src/sim/game.js';
 import { createBot, botStep } from '../src/sim/bot.js';
 import { EFFECTS } from '../src/sim/effects.js';
-import { TUNE, idx, ignite, douse, acidify, gasify, damage, reactionRate } from '../src/sim/world.js';
+import { TUNE, idx, ignite, douse, acidify, gasify, damage, reactionRate, addBolt } from '../src/sim/world.js';
 
 const DT = 1 / 60;
 
@@ -465,6 +465,22 @@ test('diagonal bolts leave their start row', () => {
   // or bolts still in flight have updated rows.
   const flown = game.bolts.some((b) => b.row !== 1) || rows.size > 0 || game.bolts.length === 0;
   assert.ok(flown || game.bolts.every((b) => b.dy !== 0), 'diagonal bolts carry dy');
+});
+
+test('diagonal bolts bounce off the top and bottom edges', () => {
+  const game = playing();
+  const p = game.players[0];
+  // Clear the foe so the bolt can travel; start on the top row aiming further up.
+  Object.assign(p, { col: 0, row: 0 });
+  Object.assign(game.players[1], { col: 7, row: 3 });
+  addBolt(game, p, { kind: 'spark', dmg: 2, speed: 20, dy: -1 });
+  const bolt = game.bolts[0];
+  assert.equal(bolt.dy, -1);
+  run(game, 0.06); // just past col 1 — would be row -1 without a bounce
+  assert.ok(!bolt.dead, 'bolt stays alive after edge bounce');
+  assert.equal(bolt.dy, 1, 'dy flips at the top edge');
+  assert.equal(bolt.row, 1);
+  assert.ok(game.events.some((e) => e.type === 'bolt-bounce'), 'emits bolt-bounce');
 });
 
 test('yui skill raises a polymer wall on the front line', () => {

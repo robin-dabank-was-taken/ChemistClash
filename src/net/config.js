@@ -73,6 +73,18 @@ export function roomWsUrl(code) {
   return u.toString();
 }
 
+/** Ranked matchmaking queue socket. */
+export function queueWsUrl() {
+  const net = resolveNet();
+  if (net.kind === 'none') return null;
+  if (net.kind === 'partykit') {
+    return `wss://${net.host}/parties/matchmaker/global`;
+  }
+  const u = new URL(net.url);
+  u.searchParams.set('queue', '1');
+  return u.toString();
+}
+
 export function makeRoomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';

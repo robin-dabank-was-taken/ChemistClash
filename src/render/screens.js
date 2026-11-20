@@ -5,7 +5,7 @@ import { getPack, DEFAULT_PACK_ID } from '../packs/index.js';
 import { CHARACTERS, PHYSICS_CHARACTERS, SELECTABLE_CHARACTERS, getCharacter } from '../characters.js';
 import { SOLO_BIND_ROWS, codeLabel } from '../controls.js';
 import { drawPortrait } from './chemist.js';
-import { W, H, FIELD_Y, FIELD_BOTTOM, PLAYER_COLORS } from './layout.js';
+import { W, H, FIELD_Y, FIELD_BOTTOM, PLAYER_COLORS, playerColor } from './layout.js';
 import { rr, circle, hash, alpha, text, font, wrap, formula, keycap } from './draw.js';
 
 const INK = '#dbe6f7';
@@ -360,7 +360,7 @@ export const MENU = ['bot', 'local', 'online', 'book', 'controls', 'howto'];
 const MENU_LABEL = {
   bot: 'PLAY VS COMPUTER',
   local: '2 PLAYERS, ONE KEYBOARD',
-  online: 'ONLINE · ROOM CODE',
+  online: 'ONLINE · QUICK MATCH',
   book: 'RECIPE BOOK',
   controls: 'CONTROLS · REBIND',
   howto: 'HOW TO PLAY',
@@ -422,7 +422,7 @@ const RULES = [
   'Each scientist buffs one family and weakens another. Chemistry nuke is Andrographolide; Physics nuke is Hawking Collapse.',
   'Online rooms use the same bindings as versus the computer. Two players on one keyboard: P1 is WASD with C for the skill, and P2 is the card on the right.',
   'Each character has a unique basic skill (E) that deals 2 damage plus a rider. Chem: Yui wall, Rin lifesteal. Phys: Minjae leap, Yerin barrier, Doyun lifesteal, Hajun probability dash.',
-  'Online: host a room, share the 4-character code, both pick the same science — the server runs the match so both sides stay in sync.',
+  'Online: Quick Match pairs nearby Elo (starts at 1000). Or host/join a private room code — private games do not change rating.',
   'Your hotbar always holds 5 pieces. The moment you throw one, a new one takes its place.',
   'Throw pieces into the active pot to build a formula, then confirm to react. Pots hold as many as you like.',
   'Chemistry zones are gas clouds; Physics zones are glitch fields. Walls block movement and bolts.',
@@ -679,22 +679,28 @@ export function drawSelect(ctx, select, time) {
 export function drawOnlineGate(ctx, online) {
   shade(ctx, 0.55);
   text(ctx, 'ONLINE DUEL', W / 2, 70, { size: 34, color: '#ffffff', align: 'center' });
-  text(ctx, 'Authoritative rooms · short codes · works with a friend', W / 2, 108, {
+  text(ctx, 'Ranked quick match · private rooms · Elo starts at 1000', W / 2, 108, {
     size: 14, color: DIM, align: 'center', weight: 400,
   });
   if (online.netLabel) {
-    text(ctx, online.netLabel, W / 2, 140, { size: 13, color: online.netOk ? '#7dffa0' : '#ffb23c', align: 'center', weight: 400 });
+    text(ctx, online.netLabel, W / 2, 136, { size: 13, color: online.netOk ? '#7dffa0' : '#ffb23c', align: 'center', weight: 400 });
+  }
+  if (online.elo != null) {
+    text(ctx, `Your Elo  ${online.elo}`, W / 2, 162, {
+      size: 18, color: PLAYER_COLORS[0], align: 'center',
+    });
   }
   const items = [
+    { id: 'queue', label: 'QUICK MATCH (ELO)' },
     { id: 'host', label: 'HOST A ROOM' },
     { id: 'join', label: 'JOIN WITH CODE' },
   ];
   online.rects = [];
   items.forEach((it, k) => {
     const w = 420;
-    const h = 56;
+    const h = 52;
     const x = (W - w) / 2;
-    const y = 190 + k * 80;
+    const y = 196 + k * 68;
     const on = online.index === k;
     rr(ctx, x, y, w, h, 12);
     ctx.fillStyle = on ? alpha(PLAYER_COLORS[0], 0.2) : 'rgba(255,255,255,0.04)';
@@ -702,22 +708,58 @@ export function drawOnlineGate(ctx, online) {
     ctx.strokeStyle = on ? PLAYER_COLORS[0] : '#2a3650';
     ctx.lineWidth = on ? 2 : 1;
     ctx.stroke();
-    text(ctx, it.label, W / 2, y + h / 2 + 1, { size: 18, color: on ? '#ffffff' : INK, align: 'center', baseline: 'middle' });
+    text(ctx, it.label, W / 2, y + h / 2 + 1, { size: 17, color: on ? '#ffffff' : INK, align: 'center', baseline: 'middle' });
     online.rects.push({ id: it.id, k, x, y, w, h });
   });
   if (online.hint) {
     ctx.font = font(13);
     wrap(ctx, online.hint, 560).forEach((line, i) => {
-      text(ctx, line, W / 2, 370 + i * 22, { size: 13, color: DIM, align: 'center', weight: 400 });
+      text(ctx, line, W / 2, 430 + i * 22, { size: 13, color: DIM, align: 'center', weight: 400 });
     });
   }
   if (online.error) {
     ctx.font = font(14);
     wrap(ctx, online.error, 600).forEach((line, i) => {
-      text(ctx, line, W / 2, 480 + i * 22, { size: 14, color: '#ff8f7a', align: 'center', weight: 400 });
+      text(ctx, line, W / 2, 520 + i * 22, { size: 14, color: '#ff8f7a', align: 'center', weight: 400 });
     });
   }
   text(ctx, 'W / S choose   ·   ENTER   ·   ESC back', W / 2, 640, { size: 12, color: DIM, align: 'center' });
+}
+
+export function drawOnlineQueue(ctx, online, time) {
+  shade(ctx, 0.55);
+  text(ctx, 'QUICK MATCH', W / 2, 90, { size: 32, color: '#ffffff', align: 'center' });
+  const pack = online.packId === 'physics' ? 'PHYSICS' : 'CHEMISTRY';
+  const packColor = online.packId === 'physics' ? '#9ad0ff' : '#9be33c';
+  text(ctx, `Science  ${pack}`, W / 2, 140, { size: 16, color: packColor, align: 'center' });
+  text(ctx, 'A / D change science before searching', W / 2, 168, {
+    size: 12, color: DIM, align: 'center', weight: 400,
+  });
+
+  const dots = '.'.repeat(1 + (Math.floor(time * 2) % 3));
+  if (online.searching) {
+    text(ctx, `Searching${dots}`, W / 2, 260, { size: 28, color: PLAYER_COLORS[0], align: 'center' });
+    text(ctx, `Elo ${online.elo ?? '—'}   ·   range ±${online.range ?? 100}   ·   ${online.waiting || 1} in queue`, W / 2, 310, {
+      size: 15, color: INK, align: 'center', weight: 400,
+    });
+    if (online.opponent) {
+      text(ctx, `Matched vs ${online.opponent.name} (${online.opponent.elo})`, W / 2, 360, {
+        size: 16, color: '#7dffa0', align: 'center',
+      });
+    }
+  } else {
+    text(ctx, 'Press ENTER to search', W / 2, 270, { size: 22, color: INK, align: 'center' });
+    if (online.elo != null) {
+      text(ctx, `Your Elo  ${online.elo}`, W / 2, 320, { size: 18, color: PLAYER_COLORS[0], align: 'center' });
+    }
+  }
+  if (online.error) {
+    text(ctx, online.error, W / 2, 420, { size: 14, color: '#ff8f7a', align: 'center', weight: 400 });
+  }
+  if (online.status) {
+    text(ctx, online.status, W / 2, 460, { size: 14, color: INK, align: 'center', weight: 400 });
+  }
+  text(ctx, 'ESC cancel', W / 2, 640, { size: 12, color: DIM, align: 'center' });
 }
 
 export function drawOnlineJoin(ctx, online) {
@@ -738,8 +780,11 @@ export function drawOnlineJoin(ctx, online) {
 
 export function drawOnlineLobby(ctx, online) {
   shade(ctx, 0.55);
-  text(ctx, 'ROOM LOBBY', W / 2, 70, { size: 30, color: '#ffffff', align: 'center' });
-  text(ctx, 'Share this code with your opponent', W / 2, 108, { size: 14, color: DIM, align: 'center', weight: 400 });
+  const ranked = !!online.ranked;
+  text(ctx, ranked ? 'RANKED LOBBY' : 'ROOM LOBBY', W / 2, 70, { size: 30, color: '#ffffff', align: 'center' });
+  text(ctx, ranked ? 'Elo match — both lock in a scientist' : 'Share this code with your opponent', W / 2, 108, {
+    size: 14, color: DIM, align: 'center', weight: 400,
+  });
   text(ctx, online.code || '----', W / 2, 190, { size: 64, color: PLAYER_COLORS[0], align: 'center' });
 
   const seats = online.seats || [null, null];
@@ -753,16 +798,23 @@ export function drawOnlineLobby(ctx, online) {
     ctx.strokeStyle = PLAYER_COLORS[i];
     ctx.lineWidth = 2;
     ctx.stroke();
-    text(ctx, i === 0 ? 'HOST' : 'GUEST', x + 110, y + 28, { size: 12, color: DIM, align: 'center' });
+    text(ctx, ranked ? `PLAYER ${i + 1}` : (i === 0 ? 'HOST' : 'GUEST'), x + 110, y + 28, {
+      size: 12, color: DIM, align: 'center',
+    });
     if (seat) {
       const ch = seat.characterId ? getCharacter(seat.characterId) : null;
-      text(ctx, seat.name || ch?.name || 'Player', x + 110, y + 70, {
+      text(ctx, seat.name || ch?.name || 'Player', x + 110, y + 64, {
         size: 20, color: PLAYER_COLORS[i], align: 'center',
       });
-      text(ctx, ch ? ch.title : 'Picking…', x + 110, y + 100, {
+      if (seat.elo != null) {
+        text(ctx, `Elo ${seat.elo}`, x + 110, y + 90, {
+          size: 13, color: INK, align: 'center', weight: 400,
+        });
+      }
+      text(ctx, ch ? ch.title : 'Picking…', x + 110, y + 112, {
         size: 13, color: INK, align: 'center', weight: 400,
       });
-      text(ctx, seat.ready ? 'READY' : 'NOT READY', x + 110, y + 132, {
+      text(ctx, seat.ready ? 'READY' : 'NOT READY', x + 110, y + 138, {
         size: 14, color: seat.ready ? '#7dffa0' : '#ffb23c', align: 'center',
       });
     } else {
@@ -785,8 +837,20 @@ export function drawPause(ctx) {
   dialog(ctx, 'PAUSED', '#ffffff', [['ESC', 'Resume'], ['TAB', 'Recipe book'], ['R', 'Restart match'], ['BACKSPACE', 'Quit to menu']]);
 }
 
-export function drawResult(ctx, game) {
+export function drawResult(ctx, game, eloResult = null, localPlayerId = null) {
   const draw = game.winner === -1;
   const title = draw ? 'DOUBLE KNOCKOUT' : `${game.players[game.winner].name.toUpperCase()} ${game.players[game.winner].name === 'You' ? 'WIN' : 'WINS'}!`;
-  dialog(ctx, title, draw ? '#ffffff' : PLAYER_COLORS[game.winner], [['ENTER', 'Rematch'], ['ESC', 'Back to menu']]);
+  const color = draw ? '#ffffff' : playerColor(game.winner);
+  dialog(ctx, title, color, [['ENTER', 'Rematch'], ['ESC', 'Back to menu']]);
+  if (eloResult?.players?.length) {
+    const mine = localPlayerId
+      ? eloResult.players.find((p) => p.playerId === localPlayerId)
+      : eloResult.players[0];
+    if (mine) {
+      const sign = mine.delta > 0 ? `+${mine.delta}` : `${mine.delta}`;
+      text(ctx, `Elo ${mine.before} → ${mine.elo}  (${sign})`, W / 2, H / 2 + 120, {
+        size: 16, color: mine.delta >= 0 ? '#7dffa0' : '#ff8f7a', align: 'center',
+      });
+    }
+  }
 }

@@ -305,11 +305,16 @@ export function stepBolt(game, b, dt) {
       b.dead = true;
       return;
     }
-    const steps = Math.abs(c - b.originCol);
-    b.row = b.originRow + (b.dy || 0) * steps;
-    if (b.row < 0 || b.row >= ROWS) {
-      b.dead = true;
-      return;
+    // Diagonal bolts step one row per column; bounce off the top/bottom edges
+    // instead of flying out of the board.
+    if (b.dy) {
+      let next = b.row + b.dy;
+      if (next < 0 || next >= ROWS) {
+        b.dy = -b.dy;
+        next = b.row + b.dy;
+        emit(game, 'bolt-bounce', { owner: b.owner, kind: b.kind, c, row: b.row });
+      }
+      b.row = Math.max(0, Math.min(ROWS - 1, next));
     }
     const i = idx(c, b.row);
     if (b.ignites && isFlammable(game.tiles[i], game)) explode(game, i);

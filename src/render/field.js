@@ -2,7 +2,7 @@
 // and the short-lived effects (particles, rings, floating numbers).
 import { COLS, ROWS, HALF, GASES, RECIPE_BY_ID } from '../data.js';
 import { TUNE, colOf, rowOf } from '../sim/world.js';
-import { tileRect, tileCenter, PLAYER_COLORS, TILE_H, FIELD_Y, FIELD_BOTTOM } from './layout.js';
+import { tileRect, tileCenter, playerColor, viewDir, TILE_H, FIELD_Y, FIELD_BOTTOM } from './layout.js';
 import { rr, circle, hash, alpha, text, font } from './draw.js';
 import { drawChemist } from './chemist.js';
 
@@ -92,7 +92,7 @@ export class FieldView {
       case 'react-done': {
         const f = this.feet(ev.pid);
         const r = recipeOf(game, ev.recipe);
-        if (r) this.float(f.x, f.y - 92, `${r.label}  ${r.name}`, PLAYER_COLORS[ev.pid], 15);
+        if (r) this.float(f.x, f.y - 92, `${r.label}  ${r.name}`, playerColor(ev.pid), 15);
         this.potPulse[ev.pid][ev.pot] = 1;
         if (this.anim?.[ev.pid]) this.anim[ev.pid].castT = Math.max(this.anim[ev.pid].castT, 0.35);
         break;
@@ -179,7 +179,7 @@ export class FieldView {
         for (const p of game.players) {
           if (p.hp > 0) continue;
           const f = this.feet(p.id);
-          this.burst(f.x, f.y - 36, PLAYER_COLORS[p.id], 40, 380, { size: 7, life: 1 });
+          this.burst(f.x, f.y - 36, playerColor(p.id), 40, 380, { size: 7, life: 1 });
           this.ring(f.x, f.y - 36, '#ffffff', 160, 0.6);
         }
         sfx.play('ko');
@@ -567,7 +567,7 @@ function drawTelegraph(ctx, s, time) {
 function drawAim(ctx, p, time) {
   if (p.hp <= 0) return;
   const { x, y, w, h } = tileRect(p.col + (p.side === 0 ? HALF : -HALF), p.row);
-  const color = PLAYER_COLORS[p.id];
+  const color = playerColor(p.id);
   const cx = x + w / 2;
   const cy = y + h / 2;
   const grow = 2 * Math.sin(time * 4);
@@ -595,9 +595,10 @@ function drawBolt(ctx, b) {
   const color = BOLT_COLOR[b.kind] || '#e9f6ff';
   const ix = Math.round(x);
   const iy = Math.round(row);
+  const trailDir = viewDir(b.dir);
   // Square trail + diamond tip reads as retro projectile.
   for (let t = 0; t < 7; t++) {
-    const px = ix - b.dir * t * 8;
+    const px = ix - trailDir * t * 8;
     const s = 8 - Math.floor(t / 2);
     ctx.fillStyle = alpha(color, 1 - t * 0.12);
     ctx.fillRect(px - s / 2, iy - s / 2, s, s);
@@ -629,7 +630,7 @@ function drawBrewing(ctx, p, pos) {
     ctx.strokeRect(x - 23.5, y - 11.5, 47, 23);
     ctx.fillStyle = '#060a13';
     ctx.fillRect(x - 20, y + 6, 40, 4);
-    ctx.fillStyle = pot.recipe ? PLAYER_COLORS[p.id] : '#8b97ad';
+    ctx.fillStyle = pot.recipe ? playerColor(p.id) : '#8b97ad';
     ctx.fillRect(x - 20, y + 6, Math.round(40 * frac), 4);
     // segment ticks on meter
     ctx.fillStyle = 'rgba(0,0,0,0.35)';

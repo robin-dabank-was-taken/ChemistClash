@@ -7,7 +7,7 @@ import {
 } from './controls.js';
 import { SELECTABLE_CHARACTERS, pickBotCharacter, getCharacter } from './characters.js';
 import { Sfx } from './audio.js';
-import { W, H } from './render/layout.js';
+import { W, H, beginView, endView } from './render/layout.js';
 import { text } from './render/draw.js';
 import { FieldView } from './render/field.js';
 import { drawTopBar, drawThermometers, drawPanel } from './render/hud.js';
@@ -15,12 +15,14 @@ import { preloadPortraits } from './render/sprites.js';
 import {
   MENU, BOOK_PAGES, bookPagesFor, drawBackdrop, drawMenu, drawHowTo, drawBook, drawSelect,
   drawCountdown, drawPause, drawResult, drawOnlineGate, drawOnlineJoin, drawOnlineLobby,
-  drawControls,
+  drawOnlineQueue, drawControls,
 } from './render/screens.js';
 import {
   NetClient, makeRoomCode, applyNetFrame, isValidCode, normalizeCode,
   resolveNet, netSetupHint, describeNet,
 } from './net/client.js';
+import { getPlayerId, getPlayerName } from './net/identity.js';
+import { DEFAULT_ELO } from './net/elo.js';
 
 const STEP = 1 / 60;
 const RESULT_DELAY = 0.9;
@@ -35,7 +37,8 @@ const net = new NetClient();
 preloadPortraits(SELECTABLE_CHARACTERS);
 
 export const app = {
-  screen: 'menu', // menu | howto | select | online | join | lobby | controls | game
+  screen: 'menu', // menu | howto | select | online | join | queue | lobby | controls | game
+  eloResult: null,
   menu: { index: 0, level: 0 },
   menuRects: [],
   book: false,
@@ -99,6 +102,8 @@ function wireNetHandlers() {
     if (!app.online) return;
     app.online.seats = msg.seats;
     app.online.code = msg.code || app.online.code;
+    app.online.ranked = !!msg.ranked;
+    app.online.matchId = msg.matchId || app.online.matchId;
     app.online.error = null;
     // Never yank the player off character select when a lobby ping arrives.
     if (app.screen === 'select' || app.screen === 'game') return;
@@ -116,10 +121,13 @@ function wireNetHandlers() {
   });
   net.on('frame', (msg) => {
     if (app.screen !== 'game' || app.mode !== 'online') return;
+    syncViewPerspective();
     applyNetFrame(app, msg, view, sfx);
   });
   net.on('over', (msg) => {
+    syncViewPerspective();
     applyNetFrame(app, msg, view, sfx);
+    if (msg.elo) app.eloResult = msg.elo;
     app.overT = RESULT_DELAY;
   });
   net.on('peer_left', (msg) => {
@@ -141,17 +149,46 @@ function wireNetHandlers() {
       if (app.online) app.online.error = 'Disconnected from server.';
     }
   });
+  net.on('matched', (msg) => {
+    void enterRankedMatch(msg);
+  });
+  net.on('queue_status', (msg) => {
+    if (!app.online || app.screen !== 'queue') return;
+    app.online.elo = msg.elo ?? app.online.elo;
+    app.online.waiting = msg.waiting;
+    app.online.range = msg.range;
+    app.online.packId = msg.packId || app.online.packId;
+  });
+  net.on('queued', (msg) => {
+    if (!app.online) return;
+    app.online.searching = true;
+    app.online.elo = msg.elo ?? app.online.elo;
+    app.online.waiting = msg.waiting;
+    app.online.packId = msg.packId || app.online.packId;
+    app.online.status = 'In queue…';
+    app.online.error = null;
+  });
 }
 wireNetHandlers();
 
 function beginOnlineMatch(msg) {
   app.mode = 'online';
   app.game = null;
+  app.eloResult = null;
+  syncViewPerspective();
   applyNetFrame(app, msg, view, sfx);
   app.bot = null;
   app.humans = [{ pid: net.pid, keys: getSoloKeys() }];
   input.configure(app.humans);
-  input.dispatch = (_pid, action) => net.act(action);
+  // Joiner sees a mirrored board (always on the blue/left side), so flip
+  // horizontal moves before they hit the authoritative sim.
+  input.dispatch = (_pid, action) => {
+    if (net.pid === 1 && action?.type === 'move') {
+      net.act({ ...action, dx: -action.dx });
+    } else {
+      net.act(action);
+    }
+  };
   view.reset();
   app.screen = 'game';
   app.select = null;
@@ -159,6 +196,88 @@ function beginOnlineMatch(msg) {
   app.book = false;
   app.overT = 0;
   sfx.play('count');
+}
+
+async function enterRankedMatch(msg) {
+  if (!app.online) return;
+  app.online.searching = false;
+  app.online.opponent = msg.opponent;
+  app.online.status = `Matched vs ${msg.opponent?.name || 'opponent'}…`;
+  app.online.ranked = true;
+  app.online.matchId = msg.matchId;
+  net.closeQueue();
+  try {
+    await net.connect(msg.code, {
+      rankedMeta: {
+        matchId: msg.matchId,
+        ranked: true,
+        elo: msg.elo,
+        opponent: msg.opponent,
+        packId: msg.packId,
+      },
+    });
+    app.online.code = msg.code;
+    app.online.role = net.pid === 0 ? 'host' : 'join';
+    app.online.seats = [null, null];
+    app.online.locked = false;
+    app.online.status = 'Ranked lobby — pick your scientist.';
+    const packFilter = msg.packId || 'chemistry';
+    beginSelect('online', {
+      onlineRole: app.online.role,
+      picking: net.pid || 0,
+      ranked: true,
+      packFilter,
+    });
+    if (app.select) {
+      app.select.cursor = Math.max(
+        0,
+        SELECTABLE_CHARACTERS.findIndex((c) => (c.pack || 'chemistry') === packFilter),
+      );
+    }
+    sfx.play('select');
+  } catch (err) {
+    app.online.error = err.message || String(err);
+    app.online.status = null;
+    app.screen = 'queue';
+  }
+}
+
+async function startQuickMatch() {
+  const packId = app.online?.packId === 'physics' ? 'physics' : 'chemistry';
+  app.online = {
+    ...(app.online || {}),
+    step: 'queue',
+    searching: true,
+    packId,
+    waiting: 1,
+    range: 100,
+    opponent: null,
+    error: null,
+    status: 'Connecting to queue…',
+    ranked: true,
+  };
+  app.screen = 'queue';
+  try {
+    const q = await net.queue({ packId });
+    app.online.elo = q.elo ?? app.online.elo;
+    app.online.waiting = q.waiting;
+    app.online.status = 'Searching for a nearby Elo…';
+  } catch (err) {
+    app.online.searching = false;
+    app.online.error = err.message || String(err);
+    app.online.status = null;
+  }
+}
+
+async function refreshGateElo() {
+  if (!app.online) return;
+  try {
+    const elo = await net.fetchElo();
+    if (app.online && elo != null) app.online.elo = elo;
+    else if (app.online && app.online.elo == null) app.online.elo = DEFAULT_ELO;
+  } catch {
+    if (app.online && app.online.elo == null) app.online.elo = DEFAULT_ELO;
+  }
 }
 
 async function hostOnline() {
@@ -208,7 +327,11 @@ function lockSelect() {
 
   if (s.mode === 'online') {
     const id = s.picks[s.picking];
-    const name = getCharacter(id).name;
+    const ch = getCharacter(id);
+    if (s.packFilter && (ch.pack || 'chemistry') !== s.packFilter) {
+      sfx.play('deny');
+      return;
+    }
     app.picks[net.pid] = id;
     app.online = app.online || {
       step: 'lobby', role: s.onlineRole, code: net.code,
@@ -218,7 +341,7 @@ function lockSelect() {
     app.online.status = 'Locked in — waiting for opponent…';
     app.screen = 'lobby';
     app.select = null;
-    net.ready(id, name);
+    net.ready(id, getPlayerName());
     return;
   }
 
@@ -279,6 +402,7 @@ function toMenu() {
   app.bot = null;
   app.select = null;
   app.online = null;
+  app.eloResult = null;
   app.paused = false;
   input.reset();
 }
@@ -287,17 +411,19 @@ function chooseMenu(id) {
   sfx.play('select');
   if (id === 'bot' || id === 'local') beginSelect(id);
   else if (id === 'online') {
-    const net = resolveNet();
+    const info = resolveNet();
     app.online = {
       step: 'gate', index: 0, role: null, code: '', seats: [null, null],
       error: null, status: null, rects: [],
-      netOk: net.kind !== 'none',
+      elo: null, packId: 'chemistry',
+      netOk: info.kind !== 'none',
       netLabel: describeNet(),
-      hint: net.kind === 'none' ? netSetupHint() : (net.kind === 'ws'
-        ? 'Tip: open a second browser tab on this same address to join.'
-        : 'Share the room code with a friend on the same site.'),
+      hint: info.kind === 'none' ? netSetupHint() : (info.kind === 'ws'
+        ? 'Quick Match pairs nearby Elo. Or host a private room for a friend.'
+        : 'Quick Match uses server Elo. Private rooms do not change rating.'),
     };
     app.screen = 'online';
+    void refreshGateElo();
   } else if (id === 'book') app.book = true;
   else if (id === 'controls') {
     app.controls = {
@@ -421,18 +547,52 @@ function onKey(code, repeat) {
   if (app.screen === 'online') {
     if (repeat) return true;
     const o = app.online;
+    const n = 3;
     if (code === 'Escape' || code === 'Backspace') { toMenu(); return true; }
-    if (code === 'KeyW' || code === 'ArrowUp') { o.index = (o.index + 1) % 2; sfx.play('menu'); }
-    else if (code === 'KeyS' || code === 'ArrowDown') { o.index = (o.index + 1) % 2; sfx.play('menu'); }
+    if (code === 'KeyW' || code === 'ArrowUp') { o.index = (o.index + n - 1) % n; sfx.play('menu'); }
+    else if (code === 'KeyS' || code === 'ArrowDown') { o.index = (o.index + 1) % n; sfx.play('menu'); }
     else if (CONFIRM.includes(code) || code === 'KeyE') {
       sfx.play('select');
-      if (o.index === 0) hostOnline();
+      if (o.index === 0) {
+        o.packId = o.packId || 'chemistry';
+        o.searching = false;
+        o.error = null;
+        o.status = null;
+        o.opponent = null;
+        app.screen = 'queue';
+      } else if (o.index === 1) hostOnline();
       else {
         o.code = '';
         o.error = null;
         o.status = null;
         app.screen = 'join';
       }
+    }
+    return true;
+  }
+
+  if (app.screen === 'queue') {
+    if (repeat) return true;
+    const o = app.online;
+    if (!o) return true;
+    if (code === 'Escape' || code === 'Backspace') {
+      net.dequeue();
+      o.searching = false;
+      o.status = null;
+      o.error = null;
+      app.screen = 'online';
+      void refreshGateElo();
+      return true;
+    }
+    if (!o.searching && (code === 'KeyA' || code === 'ArrowLeft' || code === 'KeyD' || code === 'ArrowRight')) {
+      o.packId = o.packId === 'physics' ? 'chemistry' : 'physics';
+      sfx.play('menu');
+      return true;
+    }
+    if (!o.searching && (CONFIRM.includes(code) || code === 'KeyE')) {
+      sfx.play('select');
+      void startQuickMatch();
+      return true;
     }
     return true;
   }
@@ -627,7 +787,15 @@ canvas.addEventListener('click', (e) => {
     const item = onlineItemAt(e);
     if (item) {
       app.online.index = item.k;
-      if (item.id === 'host') hostOnline();
+      sfx.play('select');
+      if (item.id === 'queue') {
+        app.online.packId = app.online.packId || 'chemistry';
+        app.online.searching = false;
+        app.online.error = null;
+        app.online.status = null;
+        app.online.opponent = null;
+        app.screen = 'queue';
+      } else if (item.id === 'host') hostOnline();
       else {
         app.online.code = '';
         app.screen = 'join';
@@ -653,6 +821,8 @@ function render() {
     drawControls(ctx, app.controls);
   } else if (app.screen === 'online') {
     drawOnlineGate(ctx, app.online);
+  } else if (app.screen === 'queue') {
+    drawOnlineQueue(ctx, app.online, app.time);
   } else if (app.screen === 'join') {
     drawOnlineJoin(ctx, app.online);
   } else if (app.screen === 'lobby') {
@@ -669,8 +839,9 @@ function render() {
       drawPanel(ctx, p, human ? human.keys.labels : null, view, app.time, app.game?.pack);
     }
     drawCountdown(ctx, game);
-    if (game.phase === 'over' && app.overT >= RESULT_DELAY) drawResult(ctx, game);
-    else if (app.paused && !app.book) drawPause(ctx);
+    if (game.phase === 'over' && app.overT >= RESULT_DELAY) {
+      drawResult(ctx, game, app.eloResult, getPlayerId());
+    } else if (app.paused && !app.book) drawPause(ctx);
   }
   if (app.book) {
     drawBook(ctx, app.bookPage, app.game?.packId || app.bookPackId || 'chemistry');
@@ -681,10 +852,21 @@ function render() {
 let last = performance.now();
 let acc = 0;
 
+function syncViewPerspective() {
+  // Online: each client sees itself on the blue/left side. Keep this active for
+  // net event FX, view.update, and painting so positions stay matched.
+  if (app.mode === 'online' && net.pid != null) {
+    beginView({ flip: net.pid === 1, localPid: net.pid });
+  } else {
+    endView();
+  }
+}
+
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   app.time += dt;
+  syncViewPerspective();
   const game = app.game;
   if (app.screen === 'game' && game && !app.paused && !app.book) {
     if (app.mode === 'online') {

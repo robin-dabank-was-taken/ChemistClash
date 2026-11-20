@@ -7,14 +7,18 @@ import { normalizeCode } from './config.js';
 const TICK = 1 / 20;
 
 export class Room {
-  constructor(code, { broadcast, onEmpty } = {}) {
+  constructor(code, { broadcast, onEmpty, reportRankedResult } = {}) {
     this.code = normalizeCode(code);
     this.broadcast = broadcast || (() => {});
     this.onEmpty = onEmpty || (() => {});
-    this.clients = new Map(); // connId -> { conn, pid, name, characterId, ready }
+    this.reportRankedResult = reportRankedResult || null;
+    this.clients = new Map(); // connId -> { conn, pid, name, characterId, ready, playerId }
     this.game = null;
     this.loop = null;
     this.phase = 'lobby'; // lobby | playing | over
+    this.ranked = false;
+    this.matchId = null;
+    this.eloResult = null;
   }
 
   lobbyState() {
@@ -25,9 +29,14 @@ export class Room {
         name: c.name,
         characterId: c.characterId,
         ready: !!c.ready,
+        elo: c.elo ?? null,
+        ranked: this.ranked,
       };
     }
-    return { type: 'lobby', code: this.code, seats, phase: this.phase };
+    return {
+      type: 'lobby', code: this.code, seats, phase: this.phase,
+      ranked: this.ranked, matchId: this.matchId,
+    };
   }
 
   send(conn, msg) {
@@ -61,9 +70,14 @@ export class Room {
       name: `Player ${pid + 1}`,
       characterId: null,
       ready: false,
+      playerId: null,
+      elo: null,
     };
     this.clients.set(id, client);
-    this.send(conn, { type: 'welcome', pid, code: this.code });
+    this.send(conn, {
+      type: 'welcome', pid, code: this.code,
+      ranked: this.ranked, matchId: this.matchId,
+    });
     this.sendAll(this.lobbyState());
   }
 
@@ -78,6 +92,16 @@ export class Room {
       case 'hello':
         if (typeof msg.name === 'string' && msg.name.trim()) {
           client.name = msg.name.trim().slice(0, 18);
+        }
+        if (typeof msg.playerId === 'string' && msg.playerId) {
+          client.playerId = msg.playerId.slice(0, 64);
+        }
+        if (typeof msg.elo === 'number' && Number.isFinite(msg.elo)) {
+          client.elo = Math.round(msg.elo);
+        }
+        if (msg.ranked && typeof msg.matchId === 'string' && msg.matchId) {
+          this.ranked = true;
+          this.matchId = msg.matchId.slice(0, 64);
         }
         this.sendAll(this.lobbyState());
         break;
@@ -172,9 +196,46 @@ export class Room {
       if (this.game.phase === 'over') {
         this.phase = 'over';
         this.stopLoop();
-        this.sendAll({ type: 'over', snapshot: snapshotGame(this.game), events: [] });
+        void this.finishRanked().then((elo) => {
+          this.sendAll({
+            type: 'over',
+            snapshot: snapshotGame(this.game),
+            events: [],
+            ranked: this.ranked,
+            elo,
+          });
+        });
       }
     }, TICK * 1000);
+  }
+
+  async finishRanked() {
+    if (!this.ranked || !this.matchId || !this.reportRankedResult || this.eloResult) {
+      return this.eloResult;
+    }
+    const seats = [...this.clients.values()].sort((a, b) => a.pid - b.pid);
+    const winnerPid = this.game?.winner;
+    let winnerPlayerId = null;
+    if (winnerPid === 0 || winnerPid === 1) {
+      winnerPlayerId = seats.find((c) => c.pid === winnerPid)?.playerId || null;
+    }
+    try {
+      const elo = await this.reportRankedResult({
+        matchId: this.matchId,
+        winnerPid: winnerPid ?? -1,
+        winnerPlayerId,
+        draw: winnerPid === -1,
+        players: seats.map((c) => ({
+          pid: c.pid,
+          playerId: c.playerId,
+          name: c.name,
+        })),
+      });
+      this.eloResult = elo;
+      return elo;
+    } catch {
+      return null;
+    }
   }
 
   stopLoop() {
