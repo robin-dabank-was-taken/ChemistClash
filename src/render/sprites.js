@@ -28,9 +28,9 @@ export function preloadPortraits(chars) {
   for (const entry of chars) {
     const id = typeof entry === 'string' ? entry : entry.id;
     const pack = typeof entry === 'string' ? 'chemistry' : (entry.pack || 'chemistry');
-    load(portraits, id, characterAsset(id, pack, 'portrait.png', 'pack5'));
-    load(walks, id, characterAsset(id, pack, 'walk.png', 'pack5'));
-    load(poses, id, characterAsset(id, pack, 'poses.png', 'pack5'));
+    load(portraits, id, characterAsset(id, pack, 'portrait.png', 'pack20'));
+    load(walks, id, characterAsset(id, pack, 'walk.png', 'pack20'));
+    load(poses, id, characterAsset(id, pack, 'poses.png', 'pack20'));
   }
 }
 
