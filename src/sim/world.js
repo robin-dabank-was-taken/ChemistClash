@@ -219,6 +219,7 @@ export function gasify(game, i, kind, dur) {
   const tile = game.tiles[i];
   tile.gas = { kind, t: dur };
   tile.glitch = null;
+  emit(game, 'gas', { i, kind });
   const gases = game.pack?.gases || GASES;
   if (tile.surf === 'fire' && gases[kind]?.flammable) explode(game, i);
 }

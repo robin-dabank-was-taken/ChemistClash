@@ -5,7 +5,8 @@ import { playerColor, viewFacing } from './layout.js';
 import { alpha, text } from './draw.js';
 import { getPortrait, getWalkSheet, getPoseSheet, POSE } from './sprites.js';
 
-const DRAW_H = 100;
+// Native sheet frame height is 96px — draw 1:1 to avoid nearest-neighbor holes.
+const DRAW_H = 96;
 const WALK_FRAMES = 3;
 const POSE_FRAMES = 4;
 // Walk progress 0..1 → sheet frames (plant → step → plant → step)

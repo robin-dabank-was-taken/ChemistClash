@@ -65,6 +65,7 @@ export class Matchmaker {
   }
 
   onConnect(conn) {
+    if (conn.id == null) conn.id = `q_${Math.random().toString(36).slice(2, 9)}`;
     this.start();
     this.send(conn, { type: 'queue_hello' });
   }
@@ -142,7 +143,7 @@ export class Matchmaker {
 
     for (let i = 0; i < waiting.length; i++) {
       const a = waiting[i];
-      if (used.has(a.playerId)) continue;
+      if (used.has(a.conn.id)) continue;
       if (!this.queue.includes(a)) continue;
 
       let best = null;
@@ -152,8 +153,9 @@ export class Matchmaker {
       for (let j = 0; j < waiting.length; j++) {
         if (i === j) continue;
         const b = waiting[j];
-        if (used.has(b.playerId)) continue;
-        if (a.playerId === b.playerId) continue;
+        // Pair by connection so two browser tabs (same localStorage playerId)
+        // can still quick-match for local testing.
+        if (used.has(b.conn.id) || a.conn === b.conn) continue;
         if (a.packId !== b.packId) continue;
         if (!this.queue.includes(b)) continue;
         const diff = Math.abs(a.elo - b.elo);
@@ -167,8 +169,8 @@ export class Matchmaker {
       }
 
       if (!best) continue;
-      used.add(a.playerId);
-      used.add(best.playerId);
+      used.add(a.conn.id);
+      used.add(best.conn.id);
       await this.pair(a, best);
     }
 

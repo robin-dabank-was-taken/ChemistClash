@@ -2,6 +2,7 @@
 // step/act; they only paint what the host sends.
 import { createGame } from './game.js';
 import { attachCharacter } from './traits.js';
+import { getPack } from '../packs/index.js';
 
 function snapTile(t) {
   return {
@@ -92,7 +93,8 @@ export function hydrateGame(snap, into = null) {
     packId: snap.packId || 'chemistry',
   });
   game.rng.setState(snap.rng);
-  game.packId = snap.packId || game.packId;
+  game.packId = snap.packId || game.packId || 'chemistry';
+  game.pack = getPack(game.packId);
   game.time = snap.time;
   game.phase = snap.phase;
   game.countdown = snap.countdown;

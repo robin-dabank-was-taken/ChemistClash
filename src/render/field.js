@@ -114,8 +114,32 @@ export class FieldView {
       case 'bolt-hit':
         this.tileBurst(ev.i, BOLT_COLOR[ev.kind] || '#e9f6ff', 12, 220);
         break;
+      case 'bolt-bounce':
+        sfx.play('toggle');
+        break;
+      case 'skill':
+        if (this.anim?.[ev.pid]) this.anim[ev.pid].castT = Math.max(this.anim[ev.pid].castT, 0.35);
+        sfx.play('buff');
+        break;
+      case 'ignite':
+        this.tileBurst(ev.i, '#ff8a3c', 10, 140, { up: 50, size: 5 });
+        sfx.play('burn');
+        break;
+      case 'gas': {
+        const color = gasInfo(game, ev.kind)?.color || '#d6e86a';
+        this.tileBurst(ev.i, color, 6, 70, { gravity: -25, size: 7, life: 0.55 });
+        sfx.play('gas');
+        break;
+      }
+      case 'glitch':
+        this.tileBurst(ev.i, '#9ad0ff', 8, 100, { gravity: -10, size: 4, life: 0.45 });
+        sfx.play('warn');
+        break;
+      case 'glitch-clear':
+        this.tileBurst(ev.i, '#cfe0ff', 4, 60, { size: 3, life: 0.3 });
+        break;
       case 'telegraph': sfx.play('warn'); break;
-      case 'strike': this.onStrike(ev, sfx); break;
+      case 'strike': this.onStrike(game, ev, sfx); break;
       case 'explosion': {
         const c = this.tileBurst(ev.i, '#ffb23c', 18, 320, { size: 6 });
         this.burst(c.x, c.y, '#fff1b8', 8, 180, { size: 4 });
@@ -190,8 +214,9 @@ export class FieldView {
     }
   }
 
-  onStrike(ev, sfx) {
-    const color = (ev.kind === 'gas' ? GASES[ev.gas]?.color : STRIKE_COLOR[ev.kind]) || '#e9f6ff';
+  onStrike(game, ev, sfx) {
+    const gasColor = gasInfo(game, ev.gas)?.color;
+    const color = (ev.kind === 'gas' ? gasColor : STRIKE_COLOR[ev.kind]) || '#e9f6ff';
     for (const i of ev.tiles) {
       if (ev.kind === 'gas') this.tileBurst(i, color, 4, 60, { gravity: -20, size: 9, life: 0.7 });
       else if (ev.kind === 'water') this.tileBurst(i, color, 7, 150, { up: 120 });
@@ -205,11 +230,13 @@ export class FieldView {
       } else if (ev.kind === 'base') {
         const c = this.tileBurst(i, color, 6, 140, { up: 50, size: 5 });
         this.ring(c.x, c.y, color, 42, 0.28);
+      } else if (ev.kind === 'spark') {
+        this.tileBurst(i, color, 10, 200, { size: 4 });
       } else if (ev.kind !== 'blast') this.tileBurst(i, color, 7, 160, { up: 80 });
     }
     if (ev.kind === 'trump') this.shake = 22;
     const sound = {
-      gas: 'gas', water: 'splash', frost: 'freeze', acid: 'splash', fire: 'burn', cyanide: 'hit', knockout: 'hit', solvent: 'hit', trump: 'boom', wall: 'shield', base: 'splash',
+      gas: 'gas', water: 'splash', frost: 'freeze', acid: 'splash', fire: 'burn', cyanide: 'hit', knockout: 'hit', solvent: 'hit', trump: 'boom', wall: 'shield', base: 'splash', spark: 'bolt',
     }[ev.kind];
     if (sound) sfx.play(sound);
   }
@@ -309,7 +336,7 @@ export class FieldView {
       }
     }
     for (const pid of humans) drawAim(ctx, game.players[pid], time);
-    for (const s of game.strikes) drawTelegraph(ctx, s, time);
+    for (const s of game.strikes) drawTelegraph(ctx, s, time, game);
 
     // Back rows first so chemists and flames overlap the tiles behind them.
     for (let r = 0; r < ROWS; r++) {
@@ -320,7 +347,7 @@ export class FieldView {
         const tile = game.tiles[r * COLS + c];
         const rect = tileRect(c, r);
         if (tile.surf === 'fire') drawFlames(ctx, rect, r * COLS + c, time, Math.min(1, tile.t / 0.4));
-        if (tile.gas) drawGas(ctx, rect, r * COLS + c, tile.gas, time);
+        if (tile.gas) drawGas(ctx, rect, r * COLS + c, tile.gas, time, game);
         if (tile.glitch) drawGlitch(ctx, rect, r * COLS + c, tile.glitch, time, game);
       }
     }
@@ -500,8 +527,13 @@ function drawFlames(ctx, { x, y, w, h }, i, time, fade) {
   }
 }
 
-function drawGas(ctx, { x, y, w, h }, i, gas, time) {
-  const g = GASES[gas.kind];
+function gasInfo(game, kind) {
+  if (!kind) return null;
+  return game?.pack?.gases?.[kind] || GASES[kind] || null;
+}
+
+function drawGas(ctx, { x, y, w, h }, i, gas, time, game) {
+  const g = gasInfo(game, gas.kind);
   if (!g) return;
   const fade = Math.min(1, gas.t / 0.6);
   for (let k = 0; k < 22; k++) {
@@ -545,8 +577,8 @@ function recipeOf(game, id) {
   return game?.pack?.RECIPE_BY_ID?.[id] || RECIPE_BY_ID[id] || null;
 }
 
-function drawTelegraph(ctx, s, time) {
-  const color = (s.kind === 'gas' ? GASES[s.gas]?.color : STRIKE_COLOR[s.kind]) || '#e9f6ff';
+function drawTelegraph(ctx, s, time, game) {
+  const color = (s.kind === 'gas' ? gasInfo(game, s.gas)?.color : STRIKE_COLOR[s.kind]) || '#e9f6ff';
   const k = Math.min(1, s.t / s.delay);
   const blink = Math.floor(time * 12) % 2;
   for (const i of s.tiles) {
