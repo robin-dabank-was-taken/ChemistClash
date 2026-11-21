@@ -87,7 +87,8 @@ export class ChemistMatchmaker extends Server {
     this.ensure().onClose(this.wrap(conn));
   }
 
-  async alarm() {
+  // PartyServer owns DurableObject.alarm — use onAlarm(), not alarm().
+  async onAlarm() {
     await this.ensure().tick();
   }
 
