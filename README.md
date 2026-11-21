@@ -2,6 +2,8 @@
 
 A real-time grid duel where you mix chemical formulas instead of playing cards.
 
+(P.S. The Physicists are being beta tested right now)
+
 ## Play locally
 
 ```bash
@@ -48,7 +50,7 @@ Quick test without editing the file:
 ```bash
 npm test
 ```
-
+## Acknowledgements
 
 THANK YOU ONE STEP FROM EDEN FOR THE INSPIRATION
 IF YOU WANT IT DOWN I CAN DO THAT
